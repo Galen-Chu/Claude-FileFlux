@@ -162,6 +162,9 @@
                             <div id="upload-progress-bar" class="bg-purple-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
                         </div>
                         <p id="upload-status-text" class="text-xs text-gray-500 mt-1">Preparing upload...</p>
+                        <div class="mt-3 flex justify-end">
+                            <button type="button" onclick="cancelUpload()" class="px-4 py-2 border border-red-300 text-red-600 rounded-md hover:bg-red-50 text-sm">Cancel Upload</button>
+                        </div>
                     </div>
 
                     <div id="upload-buttons" class="flex justify-end space-x-3">
@@ -309,6 +312,9 @@
                         <div id="download-progress-bar" class="bg-green-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
                     </div>
                     <p id="download-status-text" class="text-xs text-gray-500 mt-1">Preparing download...</p>
+                    <div class="mt-3 flex justify-end">
+                        <button type="button" onclick="cancelDownload()" class="px-4 py-2 border border-red-300 text-red-600 rounded-md hover:bg-red-50 text-sm">Cancel Download</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -332,6 +338,9 @@
         let folderPath = []; // Breadcrumb path: [{ id: 'folder_id', name: 'Folder Name' }]
         let nextPageToken = null; // For pagination
         let isLoadingMore = false; // Prevent duplicate scroll triggers
+        let currentPage = 1; // Current page for local/S3 pagination
+        let activeUploadXhr = null; // Active upload XHR (for cancel)
+        let activeDownloadXhr = null; // Active download XHR (for cancel)
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
@@ -408,16 +417,19 @@
                         currentFiles = data.files || [];
                     }
                 } else {
-                    // Use regular files API for local and S3
-                    url = '/api/files/';
+                    // Use regular files API for local and S3 (paginated)
+                    if (!appendMode) {
+                        currentPage = 1;
+                    }
+                    url = `/api/files/?page=${currentPage}&page_size=50`;
                     if (source) {
-                        url += `?source=${source}`;
+                        url += `&source=${source}`;
                     }
                     const response = await fetch(url);
                     data = await response.json();
 
-                    // Local/S3 doesn't support pagination yet
-                    nextPageToken = null;
+                    // Track whether more pages exist for infinite scroll
+                    nextPageToken = data.has_next ? String(data.next_page) : null;
 
                     if (appendMode) {
                         currentFiles = [...currentFiles, ...(data.files || [])];
@@ -462,7 +474,7 @@
         function setupInfiniteScroll() {
             window.addEventListener('scroll', () => {
                 // Only enable for Google Drive source
-                if (currentSource !== 'googledrive' || !nextPageToken || isLoadingMore) {
+                if (!nextPageToken || isLoadingMore) {
                     return;
                 }
 
@@ -503,6 +515,11 @@
                 document.getElementById('file-table-body').appendChild(loadMoreIndicator);
             }
             loadMoreIndicator.classList.remove('hidden');
+
+            // For local/S3 pagination, advance to the next page number
+            if (currentSource !== 'googledrive') {
+                currentPage = parseInt(nextPageToken);
+            }
 
             // Load next page
             await loadFiles(currentSource, currentFolderId, true);
@@ -698,6 +715,26 @@
             }
         }
 
+        // Cancel an in-progress upload
+        function cancelUpload() {
+            if (activeUploadXhr) {
+                activeUploadXhr.abort();
+                activeUploadXhr = null;
+            }
+            hideUploadModal();
+            showSuccess('Upload cancelled');
+        }
+
+        // Cancel an in-progress download
+        function cancelDownload() {
+            if (activeDownloadXhr) {
+                activeDownloadXhr.abort();
+                activeDownloadXhr = null;
+            }
+            document.getElementById('download-modal').classList.add('hidden');
+            showSuccess('Download cancelled');
+        }
+
         // Show upload modal
         function showUploadModal() {
             const modal = document.getElementById('upload-modal');
@@ -838,6 +875,7 @@
 
                     // Use XMLHttpRequest to track progress
                     const xhr = new XMLHttpRequest();
+                    activeUploadXhr = xhr;
 
                     // Track upload progress
                     xhr.upload.addEventListener('progress', (e) => {
@@ -883,6 +921,7 @@
 
                     // Use XMLHttpRequest to track progress
                     const xhr = new XMLHttpRequest();
+                    activeUploadXhr = xhr;
 
                     // Track upload progress
                     xhr.upload.addEventListener('progress', (e) => {
@@ -949,6 +988,7 @@
                 if (source === 'googledrive') {
                     // Download from Google Drive with progress tracking
                     const xhr = new XMLHttpRequest();
+                    activeDownloadXhr = xhr;
 
                     // Track download progress
                     xhr.addEventListener('progress', (e) => {
@@ -1009,26 +1049,62 @@
                     }));
 
                 } else {
-                    // Download from S3 (existing logic without progress for now)
-                    modal.classList.add('hidden');
-                    const response = await fetch('/api/files/download/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            source_path: fileId
-                        })
+                    // Download a local/S3 file to the browser with progress tracking
+                    const xhr = new XMLHttpRequest();
+                    activeDownloadXhr = xhr;
+
+                    // Track download progress
+                    xhr.addEventListener('progress', (e) => {
+                        if (e.lengthComputable) {
+                            const percentComplete = Math.round((e.loaded / e.total) * 100);
+                            progressBar.style.width = percentComplete + '%';
+                            progressText.textContent = percentComplete + '%';
+                            statusText.textContent = `Downloaded ${formatFileSize(e.loaded)} of ${formatFileSize(e.total)}`;
+                        } else {
+                            statusText.textContent = `Downloaded ${formatFileSize(e.loaded)}`;
+                        }
                     });
 
-                    const data = await response.json();
+                    // Handle completion
+                    xhr.addEventListener('load', () => {
+                        if (xhr.status === 200) {
+                            const contentDisposition = xhr.getResponseHeader('Content-Disposition');
+                            let filename = fileName;
+                            if (contentDisposition) {
+                                const filenameMatch = contentDisposition.match(/filename\*?=["']?([^"';]+)/);
+                                if (filenameMatch) {
+                                    filename = filenameMatch[1];
+                                }
+                            }
 
-                    if (response.ok) {
-                        showSuccess(`File downloaded successfully to ${data.dest_path}`);
-                        loadFiles(currentSource);
-                    } else {
-                        showError(data.error || 'Download failed');
-                    }
+                            const blob = xhr.response;
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+
+                            modal.classList.add('hidden');
+                            showSuccess('File downloaded successfully!');
+                        } else {
+                            modal.classList.add('hidden');
+                            showError('Download failed');
+                        }
+                    });
+
+                    // Handle errors
+                    xhr.addEventListener('error', () => {
+                        modal.classList.add('hidden');
+                        showError('Download failed: Network error');
+                    });
+
+                    const dlSource = source || 'local';
+                    xhr.open('GET', `/api/files/download-file/?source=${dlSource}&path=${encodeURIComponent(fileId)}`);
+                    xhr.responseType = 'blob';
+                    xhr.send();
                 }
             } catch (error) {
                 modal.classList.add('hidden');
