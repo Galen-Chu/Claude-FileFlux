@@ -1,12 +1,13 @@
 """
 API views for file management
 """
+import mimetypes
 import os
 import tempfile
 from pathlib import Path
 
 from django.conf import settings
-from django.http import FileResponse
+from django.http import FileResponse, StreamingHttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -22,7 +23,7 @@ from .serializers import (
     FileDownloadRequestSerializer,
     OperationResultSerializer,
 )
-from .services import get_unified_storage
+from .services import get_local_storage, get_s3_storage, get_unified_storage
 from .services.exceptions import FileOperationError
 
 
@@ -61,11 +62,24 @@ class FileManagementViewSet(viewsets.ViewSet):
                 needle = search.lower()
                 files = [f for f in files if needle in f.name.lower()]
 
+            # Pagination (page-number offset over the full result set)
+            total = len(files)
+            page = data.get('page') or 1
+            page_size = data.get('page_size') or 50
+            start = (page - 1) * page_size
+            page_files = files[start:start + page_size]
+            has_next = start + page_size < total
+
             # Serialize results
-            serializer = FileInfoSerializer(files, many=True)
+            serializer = FileInfoSerializer(page_files, many=True)
 
             return Response({
-                'count': len(files),
+                'count': len(page_files),
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'has_next': has_next,
+                'next_page': page + 1 if has_next else None,
                 'source': source or 'all',
                 'path': path,
                 'files': serializer.data
@@ -348,6 +362,71 @@ class FileManagementViewSet(viewsets.ViewSet):
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'], url_path='download-file')
+    def download_file(self, request):
+        """
+        Stream a local or S3 file to the browser for download (with progress).
+
+        Query params:
+            - source: 'local' or 's3'
+            - path: file path (local) or object key (S3)
+        """
+        source = request.query_params.get('source')
+        path = request.query_params.get('path')
+        if not source or not path:
+            return Response(
+                {'error': 'source and path are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        filename = os.path.basename(path) or path.split('/')[-1]
+
+        try:
+            if source == 'local':
+                local = get_local_storage()
+                full_path = local._validate_path(path)  # reuse traversal protection
+                if not full_path.exists() or not full_path.is_file():
+                    return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
+
+                content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+                return FileResponse(
+                    open(full_path, 'rb'),
+                    content_type=content_type,
+                    as_attachment=True,
+                    filename=filename,
+                )
+
+            elif source == 's3':
+                s3 = get_s3_storage()
+                try:
+                    head = s3.client.head_object(Bucket=s3.bucket_name, Key=path)
+                except Exception:
+                    return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
+
+                obj = s3.client.get_object(Bucket=s3.bucket_name, Key=path)
+                response = StreamingHttpResponse(
+                    obj['Body'].iter_chunks(chunk_size=8192),
+                    content_type=obj.get('ContentType', 'application/octet-stream'),
+                )
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                content_length = obj.get('ContentLength') or head.get('ContentLength')
+                if content_length is not None:
+                    response['Content-Length'] = str(content_length)
+                return response
+
+            else:
+                return Response(
+                    {'error': "source must be 'local' or 's3'"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        except FileOperationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response(
+                {'error': f'Download failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @action(detail=False, methods=['get'])

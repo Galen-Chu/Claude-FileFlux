@@ -234,6 +234,91 @@ class FileSearchAPITest(TestCase):
             self.assertEqual(r3.data['count'], 0)
 
 
+class FilePaginationAPITest(TestCase):
+    """Page-number pagination of local/S3 listings."""
+
+    def setUp(self):
+        import manager.services as svc
+        self._svc = svc
+        self.tmp = tempfile.TemporaryDirectory()
+        for i in range(60):  # two pages at page_size=50
+            (Path(self.tmp.name) / f'file_{i:03d}.txt').write_text('x')
+        self.user = User.objects.create_user('page', password='x')
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def tearDown(self):
+        self._svc._local_storage_instance = None
+        self._svc._s3_storage_instance = None
+        self._svc._unified_storage_instance = None
+        self.tmp.cleanup()
+
+    def _reset(self):
+        self._svc._local_storage_instance = None
+        self._svc._s3_storage_instance = None
+        self._svc._unified_storage_instance = None
+
+    def test_first_page(self):
+        self._reset()
+        with override_settings(LOCAL_STORAGE_PATH=self.tmp.name):
+            r = self.client.get('/api/files/?source=local&page=1&page_size=50')
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data['total'], 60)
+            self.assertEqual(r.data['page'], 1)
+            self.assertTrue(r.data['has_next'])
+            self.assertEqual(r.data['next_page'], 2)
+            self.assertEqual(len(r.data['files']), 50)
+
+    def test_last_page(self):
+        self._reset()
+        with override_settings(LOCAL_STORAGE_PATH=self.tmp.name):
+            r = self.client.get('/api/files/?source=local&page=2&page_size=50')
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(len(r.data['files']), 10)
+            self.assertFalse(r.data['has_next'])
+            self.assertIsNone(r.data['next_page'])
+
+
+class DownloadFileAPITest(TestCase):
+    """Browser streaming download of a local file."""
+
+    def setUp(self):
+        import manager.services as svc
+        self._svc = svc
+        self.tmp = tempfile.TemporaryDirectory()
+        (Path(self.tmp.name) / 'doc.txt').write_text('hello world')
+        self.user = User.objects.create_user('dl', password='x')
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def tearDown(self):
+        self._svc._local_storage_instance = None
+        self._svc._s3_storage_instance = None
+        self._svc._unified_storage_instance = None
+        self.tmp.cleanup()
+
+    def _reset(self):
+        self._svc._local_storage_instance = None
+        self._svc._s3_storage_instance = None
+        self._svc._unified_storage_instance = None
+
+    def test_download_local_file(self):
+        self._reset()
+        with override_settings(LOCAL_STORAGE_PATH=self.tmp.name):
+            r = self.client.get('/api/files/download-file/?source=local&path=doc.txt')
+            self.assertEqual(r.status_code, 200)
+            self.assertIn('attachment', r['Content-Disposition'])
+            self.assertIn('doc.txt', r['Content-Disposition'])
+            content = b''.join(r.streaming_content)
+            self.assertEqual(content, b'hello world')
+
+    def test_download_not_found(self):
+        self._reset()
+        with override_settings(LOCAL_STORAGE_PATH=self.tmp.name):
+            r = self.client.get('/api/files/download-file/?source=local&path=missing.txt')
+            self.assertEqual(r.status_code, 404)
+
+
 class CloudDriveAPITest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user('cloud', password='x')

@@ -35,6 +35,19 @@ class FileListRequestSerializer(serializers.Serializer):
         allow_blank=True,
         help_text='Optional case-insensitive filename search (local & S3)'
     )
+    page = serializers.IntegerField(
+        required=False,
+        default=1,
+        min_value=1,
+        help_text='Page number for pagination (default: 1)'
+    )
+    page_size = serializers.IntegerField(
+        required=False,
+        default=50,
+        min_value=1,
+        max_value=200,
+        help_text='Items per page (default: 50, max: 200)'
+    )
 
     def validate_source(self, value):
         """Validate source parameter"""
