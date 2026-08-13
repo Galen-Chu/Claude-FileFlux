@@ -25,12 +25,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-4-vicls3au#!eu!hmjn-ect4sm_w%hr5-!l(7)z8u31v3+pf!#'
+SECRET_KEY = os.getenv(
+    'DJANGO_SECRET_KEY',
+    # Insecure dev-only fallback. Set DJANGO_SECRET_KEY in production.
+    'django-insecure-4-vicls3au#!eu!hmjn-ect4sm_w%hr5-!l(7)z8u31v3+pf!#',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True').lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h.strip()]
 
 
 # Application definition
@@ -141,6 +145,14 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/min',
+        'user': '300/min',
+    },
 }
 
 # Authentication settings
@@ -167,3 +179,7 @@ GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
 
 # OAuth redirect URI
 OAUTH_REDIRECT_URI = os.getenv('OAUTH_REDIRECT_URI', 'http://localhost:8000/oauth/callback/')
+
+# Token-at-rest encryption key (Fernet urlsafe base64). If unset, one is
+# derived from SECRET_KEY so dev works out-of-the-box. Set FILEFLUX_ENCRYPTION_KEY in production.
+ENCRYPTION_KEY = os.getenv('FILEFLUX_ENCRYPTION_KEY', '')

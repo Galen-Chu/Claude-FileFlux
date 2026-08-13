@@ -1,6 +1,8 @@
 """
 Cloud drive OAuth views
 """
+import secrets
+
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -13,6 +15,16 @@ from .services.cloud_manager import CloudDriveManager
 from .models import CloudStorageToken
 
 
+def _make_oauth_state(request, provider):
+    """
+    Create a CSRF-protecting state token that ties the OAuth round-trip to
+    this session. The provider is encoded as the prefix before the nonce.
+    """
+    state = f'{provider}:{secrets.token_urlsafe(32)}'
+    request.session['oauth_state'] = state
+    return state
+
+
 @login_required
 def connect_onedrive(request):
     """
@@ -20,6 +32,7 @@ def connect_onedrive(request):
     Redirects to Microsoft login page
     """
     try:
+        state = _make_oauth_state(request, 'onedrive')
         # Build Microsoft OAuth URL
         params = {
             'client_id': settings.MS_CLIENT_ID,
@@ -27,7 +40,7 @@ def connect_onedrive(request):
             'redirect_uri': settings.OAUTH_REDIRECT_URI,
             'scope': 'files.readwrite.all offline_access',
             'response_mode': 'query',
-            'state': 'onedrive',  # Identify provider in callback
+            'state': state,
         }
 
         auth_url = f"https://login.microsoftonline.com/{settings.MS_TENANT_ID}/oauth2/v2.0/authorize?{urlencode(params)}"
@@ -47,6 +60,7 @@ def connect_googledrive(request):
     Redirects to Google login page
     """
     try:
+        state = _make_oauth_state(request, 'googledrive')
         # Build Google OAuth URL
         params = {
             'client_id': settings.GOOGLE_CLIENT_ID,
@@ -55,7 +69,7 @@ def connect_googledrive(request):
             'scope': 'https://www.googleapis.com/auth/drive.file',
             'access_type': 'offline',
             'prompt': 'consent',
-            'state': 'googledrive',  # Identify provider in callback
+            'state': state,
         }
 
         auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"

@@ -35,13 +35,22 @@ def oauth_callback(request):
         messages.error(request, 'No authorization code received')
         return redirect('manager:profile')
 
+    # Validate state against the session to prevent CSRF / forged callbacks.
+    expected = request.session.pop('oauth_state', None)
+    if not state or state != expected:
+        messages.error(request, 'Invalid OAuth state. Please try connecting again.')
+        return redirect('manager:profile')
+
+    # Provider is encoded as the prefix before the nonce.
+    provider = state.split(':', 1)[0]
+
     # Route based on state parameter
-    if state == 'onedrive':
+    if provider == 'onedrive':
         return _handle_onedrive_callback(request, code)
-    elif state == 'googledrive':
+    elif provider == 'googledrive':
         return _handle_googledrive_callback(request, code)
     else:
-        messages.error(request, f'Unknown OAuth provider: {state}')
+        messages.error(request, f'Unknown OAuth provider: {provider}')
         return redirect('manager:profile')
 
 
