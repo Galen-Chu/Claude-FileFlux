@@ -9,6 +9,7 @@ routing/error paths.
 """
 import tempfile
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 from django.contrib.auth.models import User
 from django.db import connection
@@ -311,12 +312,62 @@ class DownloadFileAPITest(TestCase):
             self.assertIn('doc.txt', r['Content-Disposition'])
             content = b''.join(r.streaming_content)
             self.assertEqual(content, b'hello world')
+            r.close()  # release the file handle so tearDown can clean up (Windows)
 
     def test_download_not_found(self):
         self._reset()
         with override_settings(LOCAL_STORAGE_PATH=self.tmp.name):
             r = self.client.get('/api/files/download-file/?source=local&path=missing.txt')
             self.assertEqual(r.status_code, 404)
+
+    def test_download_inline_for_preview(self):
+        self._reset()
+        with override_settings(LOCAL_STORAGE_PATH=self.tmp.name):
+            r = self.client.get('/api/files/download-file/?source=local&path=doc.txt&inline=1')
+            self.assertEqual(r.status_code, 200)
+            # inline (preview) -> no attachment disposition
+            self.assertNotIn('attachment', r['Content-Disposition'] or '')
+            r.close()  # release the file handle so tearDown can clean up (Windows)
+
+
+class ShareLinkAPITest(TestCase):
+    """S3 presigned share-link generation (boto3 is mocked)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('share', password='x')
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    @patch('manager.api_views.get_s3_storage')
+    def test_share_generates_presigned_url(self, mock_get):
+        mock_s3 = MagicMock()
+        mock_s3.bucket_name = 'test-bucket'
+        mock_s3.client.generate_presigned_url.return_value = 'https://s3.example.com/signed'
+        mock_get.return_value = mock_s3
+
+        r = self.client.post('/api/files/share/', {'source': 's3', 'path': 'docs/report.pdf'}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['url'], 'https://s3.example.com/signed')
+        self.assertEqual(r.data['expires_in'], 3600)
+        kwargs = mock_s3.client.generate_presigned_url.call_args.kwargs
+        self.assertEqual(kwargs['Params']['Bucket'], 'test-bucket')
+        self.assertEqual(kwargs['Params']['Key'], 'docs/report.pdf')
+
+    @patch('manager.api_views.get_s3_storage')
+    def test_share_clamps_expiry(self, mock_get):
+        mock_s3 = MagicMock()
+        mock_s3.bucket_name = 'b'
+        mock_s3.client.generate_presigned_url.return_value = 'https://x'
+        mock_get.return_value = mock_s3
+
+        r = self.client.post('/api/files/share/', {'path': 'a', 'expires_in': 10}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['expires_in'], 60)  # clamped up to the 60s minimum
+        self.assertEqual(mock_s3.client.generate_presigned_url.call_args.kwargs['ExpiresIn'], 60)
+
+    def test_share_requires_path(self):
+        r = self.client.post('/api/files/share/', {'source': 's3'}, format='json')
+        self.assertEqual(r.status_code, 400)
 
 
 class CloudDriveAPITest(TestCase):

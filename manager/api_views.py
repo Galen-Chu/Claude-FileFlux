@@ -381,6 +381,7 @@ class FileManagementViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         filename = os.path.basename(path) or path.split('/')[-1]
+        inline = request.query_params.get('inline')  # serve inline for preview
 
         try:
             if source == 'local':
@@ -393,7 +394,7 @@ class FileManagementViewSet(viewsets.ViewSet):
                 return FileResponse(
                     open(full_path, 'rb'),
                     content_type=content_type,
-                    as_attachment=True,
+                    as_attachment=not inline,
                     filename=filename,
                 )
 
@@ -409,7 +410,8 @@ class FileManagementViewSet(viewsets.ViewSet):
                     obj['Body'].iter_chunks(chunk_size=8192),
                     content_type=obj.get('ContentType', 'application/octet-stream'),
                 )
-                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                disposition = 'inline' if inline else 'attachment'
+                response['Content-Disposition'] = f'{disposition}; filename="{filename}"'
                 content_length = obj.get('ContentLength') or head.get('ContentLength')
                 if content_length is not None:
                     response['Content-Length'] = str(content_length)
@@ -426,6 +428,42 @@ class FileManagementViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response(
                 {'error': f'Download failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=['post'])
+    def share(self, request):
+        """
+        Generate a time-limited presigned URL to share an S3 object.
+
+        Request body (JSON):
+            - path: S3 object key
+            - expires_in: validity in seconds (default 3600, clamped to 60..604800)
+        """
+        path = request.data.get('path')
+        if not path:
+            return Response(
+                {'error': 'path is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            expires_in = min(max(int(request.data.get('expires_in', 3600)), 60), 7 * 24 * 3600)
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'expires_in must be an integer'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            s3 = get_s3_storage()
+            url = s3.client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': s3.bucket_name, 'Key': path},
+                ExpiresIn=expires_in,
+            )
+            return Response({'url': url, 'source': 's3', 'path': path, 'expires_in': expires_in})
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to create share link: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
