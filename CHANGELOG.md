@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2026-08-13
+
+### Added
+- **OneDrive file operations**: new `OneDriveService` implementing the full operation set (list, get, upload, download, create folder, delete, rename, token refresh) against the Microsoft Graph API. Cloud drives now share a uniform `CloudStorageService` interface, and `CloudDriveViewSet` is provider-agnostic — OneDrive endpoints return real results instead of "not yet supported".
+- **API filename search**: `?search=` parameter on `/api/files/` for case-insensitive filtering of local/S3 listings.
+- **Token encryption at rest**: `EncryptedTextField` (Fernet) transparently encrypts OAuth `access_token`/`refresh_token` in the database; reads decrypt automatically. Existing code is unchanged.
+- **OAuth `state` CSRF nonce**: connect flows now bind a random nonce to the session, validated on the callback (forged callbacks are rejected).
+- **DRF rate limiting**: anon 60/min, authenticated 300/min.
+- **Per-user audit logs**: `FileOperation` gained a `user` FK; the logs endpoint filters to the requesting user (superusers see all).
+- **Profile flash messages**: OAuth success/error messages now render on the profile page.
+- **Test suite**: 22 automated tests covering models, encryption, local-storage logic, the cloud-service interface, API auth/routing, OAuth state, and search.
+
+### Changed
+- `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS` are now environment-driven (dev fallback retained).
+- `requirements.txt`: added `cryptography==50.0.0`.
+- Cloud ViewSet refactored to a single provider-agnostic path via a `_resolve()` helper.
+
+### Fixed
+- Google Drive upload metadata was built with a Python `dict`-repr-to-JSON hack (`str().replace`) that produced invalid JSON for filenames containing quotes; now uses `json.dumps`.
+- Bare `except:` in `LocalStorage.file_exists` narrowed to `except Exception:`.
+
+### Removed
+- Dead `CloudDriveManager.get_authorization_url()` (returned placeholder URLs; unused — real URLs are built in `cloud_views.py`).
+
+---
+
 ## [1.1.0] - 2026-03-03
 
 ### Added

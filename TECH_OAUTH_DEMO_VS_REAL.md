@@ -1,5 +1,14 @@
 # Google Drive Connection: Demo vs. Real Implementation
 
+> ⚠️ **SUPERSEDED (2026-08-13).** This document describes an earlier *demo mode* that
+> stored fake tokens. That is no longer the case: real OAuth 2.0 is implemented
+> (`manager/cloud_views.py` redirects to Google/Microsoft, `manager/oauth_views.py`
+> exchanges the authorization code for real tokens, and `GoogleDriveService` /
+> `OneDriveService` perform real file operations). The "Connect" button no longer
+> creates fake tokens. The historical explanation below is retained for reference only.
+
+---
+
 ## 🎭 Current Implementation: Demo Mode
 
 ### What Happens When You Click "Connect Google Drive"

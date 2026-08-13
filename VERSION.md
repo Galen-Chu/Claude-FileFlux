@@ -1,13 +1,37 @@
 # FileFlux Version Information
 
-## Current Version: 2.0.0
+## Current Version: 2.1.0
 
-**Release Date:** 2026-03-03
-**Status:** Production Ready
+**Release Date:** 2026-08-13
+**Status:** Feature-complete for local/S3/Google Drive/OneDrive + auth; production hardening in progress (see README → Security)
 
 ---
 
 ## Version History
+
+### Version 2.1.0 (2026-08-13)
+
+**New Features:**
+- **OneDrive file operations** (Microsoft Graph API) — list, get, upload, download, create folder, delete, rename, token refresh
+- **Cloud service interface** — `GoogleDriveService` and `OneDriveService` now share a uniform `CloudStorageService` contract; `CloudDriveViewSet` is provider-agnostic
+- **API filename search** (`?search=`) over local/S3 listings
+- **Token encryption at rest** (Fernet via `EncryptedTextField`)
+- **OAuth `state` CSRF nonce** on all cloud connect/callback flows
+- **DRF rate limiting** (anon 60/min, user 300/min)
+- **Per-user audit logging** (`FileOperation.user` FK + per-user logs endpoint)
+- **Automated test suite** (22 tests)
+
+**Fixed:**
+- Google Drive upload JSON serialization bug (dict-repr → `json.dumps`)
+- Bare `except:` → `except Exception:` in `LocalStorage.file_exists`
+
+**Security:**
+- `SECRET_KEY` / `DEBUG` / `ALLOWED_HOSTS` now environment-driven
+- Removed dead `get_authorization_url()` placeholder method
+
+**Dependencies:** + `cryptography==50.0.0`
+
+---
 
 ### Version 2.0.0 (2026-03-03)
 
