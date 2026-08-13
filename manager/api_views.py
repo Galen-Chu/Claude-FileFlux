@@ -50,10 +50,16 @@ class FileManagementViewSet(viewsets.ViewSet):
         data = query_serializer.validated_data
         source = data.get('source')
         path = data.get('path', '')
+        search = data.get('search')
 
         try:
             storage = get_unified_storage()
             files = storage.list_files(source=source, path=path)
+
+            # Optional case-insensitive filename search (local & S3 listings)
+            if search:
+                needle = search.lower()
+                files = [f for f in files if needle in f.name.lower()]
 
             # Serialize results
             serializer = FileInfoSerializer(files, many=True)
@@ -127,6 +133,7 @@ class FileManagementViewSet(viewsets.ViewSet):
             for success_item in result['success']:
                 FileOperation.objects.create(
                     operation='RENAME',
+                    user=request.user,
                     source=source,
                     file_path=success_item['new_path'],
                     old_path=success_item['old_path'],
@@ -136,6 +143,7 @@ class FileManagementViewSet(viewsets.ViewSet):
             for failed_item in result['failed']:
                 FileOperation.objects.create(
                     operation='RENAME',
+                    user=request.user,
                     source=source,
                     file_path=failed_item['file'],
                     success=False,
@@ -178,6 +186,7 @@ class FileManagementViewSet(viewsets.ViewSet):
             for file_path in result['success']:
                 FileOperation.objects.create(
                     operation='DELETE',
+                    user=request.user,
                     source=source,
                     file_path=file_path,
                     success=True
@@ -186,6 +195,7 @@ class FileManagementViewSet(viewsets.ViewSet):
             for failed_item in result['failed']:
                 FileOperation.objects.create(
                     operation='DELETE',
+                    user=request.user,
                     source=source,
                     file_path=failed_item['file'],
                     success=False,
@@ -244,6 +254,7 @@ class FileManagementViewSet(viewsets.ViewSet):
             # Log operation
             FileOperation.objects.create(
                 operation='UPLOAD',
+                user=request.user,
                 source='s3',
                 file_path=dest_path,
                 success=True,
@@ -260,6 +271,7 @@ class FileManagementViewSet(viewsets.ViewSet):
             # Log failed operation
             FileOperation.objects.create(
                 operation='UPLOAD',
+                user=request.user,
                 source='s3',
                 file_path=dest_path,
                 success=False,
@@ -309,6 +321,7 @@ class FileManagementViewSet(viewsets.ViewSet):
             # Log operation
             FileOperation.objects.create(
                 operation='DOWNLOAD',
+                user=request.user,
                 source='s3',
                 file_path=source_path,
                 success=True,
@@ -326,6 +339,7 @@ class FileManagementViewSet(viewsets.ViewSet):
             # Log failed operation
             FileOperation.objects.create(
                 operation='DOWNLOAD',
+                user=request.user,
                 source='s3',
                 file_path=source_path,
                 success=False,
@@ -345,13 +359,18 @@ class FileManagementViewSet(viewsets.ViewSet):
             - limit: number of logs to return (default: 50)
         """
         limit = int(request.query_params.get('limit', 50))
-        logs = FileOperation.objects.all()[:limit]
+        qs = FileOperation.objects.all()
+        # Non-superusers only see their own operations
+        if not request.user.is_superuser:
+            qs = qs.filter(user=request.user)
+        logs = qs[:limit]
 
         # Manual serialization
         data = [{
             'id': log.id,
             'operation': log.operation,
             'source': log.source,
+            'user': log.user.username if log.user else None,
             'file_path': log.file_path,
             'old_path': log.old_path,
             'timestamp': log.timestamp,

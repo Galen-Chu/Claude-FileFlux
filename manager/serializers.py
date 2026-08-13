@@ -30,6 +30,11 @@ class FileListRequestSerializer(serializers.Serializer):
         default='',
         help_text='Path to list files from'
     )
+    search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text='Optional case-insensitive filename search (local & S3)'
+    )
 
     def validate_source(self, value):
         """Validate source parameter"""
