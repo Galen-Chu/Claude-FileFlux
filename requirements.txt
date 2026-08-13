@@ -4,3 +4,4 @@ boto3==1.42.59
 python-dotenv==1.2.2
 requests==2.31.0
 requests-toolbelt==1.0.0
+cryptography==50.0.0

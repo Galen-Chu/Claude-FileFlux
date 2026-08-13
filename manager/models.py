@@ -2,6 +2,8 @@ from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 
+from .fields import EncryptedTextField
+
 
 class FileOperation(models.Model):
     """Model for logging file operations"""
@@ -13,6 +15,14 @@ class FileOperation(models.Model):
         ('DELETE', 'Delete'),
     ]
 
+    user = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='file_operations',
+        null=True,
+        blank=True,
+        help_text='User who performed the operation (null for legacy/system rows)'
+    )
     operation = models.CharField(
         max_length=20,
         choices=OPERATION_CHOICES,
@@ -82,13 +92,13 @@ class CloudStorageToken(models.Model):
         choices=PROVIDER_CHOICES,
         help_text='Cloud storage provider'
     )
-    access_token = models.TextField(
-        help_text='OAuth 2.0 access token'
+    access_token = EncryptedTextField(
+        help_text='OAuth 2.0 access token (encrypted at rest)'
     )
-    refresh_token = models.TextField(
+    refresh_token = EncryptedTextField(
         blank=True,
         default='',
-        help_text='OAuth 2.0 refresh token'
+        help_text='OAuth 2.0 refresh token (encrypted at rest)'
     )
     token_expires_at = models.DateTimeField(
         null=True,
