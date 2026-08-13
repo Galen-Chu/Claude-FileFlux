@@ -34,6 +34,9 @@
                         <button onclick="handleDelete()" class="bg-red-600 px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition">
                             Delete Selected
                         </button>
+                        <button onclick="showMoveModal()" class="bg-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition">
+                            Move Selected
+                        </button>
                     </div>
                     <div class="border-l border-purple-400 pl-4 flex items-center space-x-3">
                         <span class="text-purple-200">Welcome, {{ user.username }}</span>
@@ -90,7 +93,7 @@
         </div>
 
         <!-- File Table -->
-        <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div id="file-drop-zone" class="bg-white rounded-lg shadow overflow-hidden transition-all">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
@@ -350,6 +353,33 @@
         </div>
     </div>
 
+    <!-- Move Modal -->
+    <div id="move-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Move Files</h3>
+                <form id="move-form" onsubmit="confirmMove(event)">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Destination</label>
+                        <select id="move-dest-source" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                            <option value="s3">S3 (cloud)</option>
+                            <option value="local">Local storage</option>
+                        </select>
+                        <p id="move-hint" class="mt-1 text-xs text-gray-500"></p>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Destination folder (optional)</label>
+                        <input type="text" id="move-dest-path" placeholder="e.g. archive/ (defaults to root)" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="hideMoveModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Move</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Error Toast -->
     <div id="error-toast" class="hidden fixed bottom-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg">
         <span id="error-message"></span>
@@ -376,6 +406,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadFiles(null);
             setupInfiniteScroll();
+            setupDragDrop();
         });
 
         // Load files from API
@@ -518,6 +549,80 @@
                     loadMoreFiles();
                 }
             });
+        }
+
+        // ----- Drag & drop upload (A7) -----
+        function setupDragDrop() {
+            const zone = document.getElementById('file-drop-zone');
+            if (!zone) return;
+            const highlight = () => zone.classList.add('ring-2', 'ring-purple-500', 'bg-purple-50');
+            const unhighlight = () => zone.classList.remove('ring-2', 'ring-purple-500', 'bg-purple-50');
+            zone.addEventListener('dragover', (e) => { e.preventDefault(); highlight(); });
+            zone.addEventListener('dragenter', (e) => { e.preventDefault(); highlight(); });
+            zone.addEventListener('dragleave', unhighlight);
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                unhighlight();
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+                    handleDrop(e.dataTransfer.files);
+                }
+            });
+        }
+
+        async function handleDrop(fileList) {
+            const files = Array.from(fileList);
+            if (!files.length) return;
+            // Browser uploads target a cloud backend: Google Drive if active, else S3
+            const target = currentSource === 'googledrive' ? 'googledrive' : 's3';
+
+            const progressContainer = document.getElementById('upload-progress-container');
+            const progressBar = document.getElementById('upload-progress-bar');
+            const progressText = document.getElementById('upload-progress-text');
+            const statusText = document.getElementById('upload-status-text');
+            const buttons = document.getElementById('upload-buttons');
+            document.getElementById('upload-modal-title').textContent =
+                `Uploading ${files.length} file(s) to ${target === 'googledrive' ? 'Google Drive' : 'S3'}`;
+            buttons.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+            document.getElementById('upload-modal').classList.remove('hidden');
+
+            let done = 0;
+            for (const file of files) {
+                statusText.textContent = `Uploading ${file.name} (${done + 1}/${files.length})...`;
+                await new Promise((resolve) => {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    let url;
+                    if (target === 'googledrive') {
+                        url = '/api/cloud/upload/';
+                        formData.append('provider', 'googledrive');
+                        if (currentFolderId) formData.append('parent_folder_id', currentFolderId);
+                    } else {
+                        url = '/api/files/upload/';
+                    }
+                    const xhr = new XMLHttpRequest();
+                    activeUploadXhr = xhr;
+                    xhr.upload.addEventListener('progress', (e) => {
+                        if (e.lengthComputable) {
+                            const pct = Math.round((e.loaded / e.total) * 100);
+                            progressBar.style.width = pct + '%';
+                            progressText.textContent = pct + '%';
+                        }
+                    });
+                    const finish = () => { activeUploadXhr = null; resolve(); };
+                    xhr.addEventListener('load', finish);
+                    xhr.addEventListener('error', finish);
+                    xhr.addEventListener('abort', finish);
+                    xhr.open('POST', url);
+                    xhr.send(formData);
+                });
+                done++;
+            }
+            hideUploadModal();
+            showSuccess(`Uploaded ${done} file(s) to ${target === 'googledrive' ? 'Google Drive' : 'S3'}`);
+            loadFiles(currentSource);
         }
 
         // Load more files (pagination)
@@ -843,6 +948,68 @@
 
         function hideShareModal() {
             document.getElementById('share-modal').classList.add('hidden');
+        }
+
+        // ----- Move files across sources (A7) -----
+        function showMoveModal() {
+            if (selectedFiles.size === 0) {
+                showError('Please select files to move');
+                return;
+            }
+            if (currentSource !== 'local' && currentSource !== 's3') {
+                showError('Move is supported on the Local or S3 tabs');
+                return;
+            }
+            const destSel = document.getElementById('move-dest-source');
+            destSel.value = currentSource === 's3' ? 'local' : 's3';
+            document.getElementById('move-hint').textContent = `Moving from ${currentSource} to the destination below`;
+            document.getElementById('move-dest-path').value = '';
+            document.getElementById('move-modal').classList.remove('hidden');
+        }
+
+        function hideMoveModal() {
+            document.getElementById('move-modal').classList.add('hidden');
+        }
+
+        async function confirmMove(event) {
+            event.preventDefault();
+            const destSource = document.getElementById('move-dest-source').value;
+            const destPath = document.getElementById('move-dest-path').value.trim();
+            const source = currentSource;
+            if (source === destSource) {
+                showError('Choose a different destination source');
+                return;
+            }
+            // selectedFiles entries are "path|source"; keep only those on the current source
+            const files = Array.from(selectedFiles)
+                .filter(k => k.endsWith('|' + source))
+                .map(k => k.slice(0, k.lastIndexOf('|')));
+            if (!files.length) {
+                showError('No movable files selected for this source');
+                return;
+            }
+            try {
+                const body = { files, source, dest_source: destSource };
+                if (destPath) body.dest_path = destPath;
+                const resp = await fetch('/api/files/move/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    hideMoveModal();
+                    const failed = (data.failed || []).length;
+                    showSuccess(`Moved ${data.success.length} file(s)${failed ? `, ${failed} failed` : ''}`);
+                    selectedFiles.clear();
+                    updateSelectionInfo();
+                    loadFiles(source);
+                } else {
+                    showError(data.error || 'Move failed');
+                }
+            } catch (e) {
+                showError('Move failed: ' + e.message);
+            }
         }
 
         // Show upload modal
