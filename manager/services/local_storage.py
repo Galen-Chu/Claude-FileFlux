@@ -397,7 +397,7 @@ class LocalStorage(BaseStorage):
         try:
             full_path = self._validate_path(path)
             return full_path.exists()
-        except:
+        except Exception:
             return False
 
     def get_file_info(self, path: str) -> Optional[FileInfo]:
