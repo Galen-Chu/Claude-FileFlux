@@ -13,6 +13,7 @@ class FileOperation(models.Model):
         ('DOWNLOAD', 'Download'),
         ('RENAME', 'Rename'),
         ('DELETE', 'Delete'),
+        ('MOVE', 'Move'),
     ]
 
     user = models.ForeignKey(

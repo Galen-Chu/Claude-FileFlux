@@ -390,6 +390,79 @@ class CloudDriveAPITest(TestCase):
 # ---------------------------------------------------------------------------
 # OAuth state CSRF handling (function views -> plain Client)
 # ---------------------------------------------------------------------------
+class MoveFilesAPITest(TestCase):
+    """Cross-source move (local <-> S3). S3 is mocked."""
+
+    def setUp(self):
+        import manager.services as svc
+        self._svc = svc
+        self.tmp = tempfile.TemporaryDirectory()
+        (Path(self.tmp.name) / 'a.txt').write_text('AAA')
+        self.user = User.objects.create_user('mv', password='x')
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def tearDown(self):
+        self._svc._local_storage_instance = None
+        self._svc._s3_storage_instance = None
+        self._svc._unified_storage_instance = None
+        self.tmp.cleanup()
+
+    def _reset_local(self):
+        self._svc._local_storage_instance = None
+        self._svc._unified_storage_instance = None
+
+    @patch('manager.api_views.get_s3_storage')
+    def test_move_local_to_s3(self, mock_get):
+        mock_s3 = MagicMock()
+        mock_s3.upload_file.return_value = True
+        mock_get.return_value = mock_s3
+
+        self._reset_local()
+        with override_settings(LOCAL_STORAGE_PATH=self.tmp.name):
+            r = self.client.post('/api/files/move/', {
+                'files': ['a.txt'], 'source': 'local', 'dest_source': 's3',
+            }, format='json')
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data['success']), 1)
+        mock_s3.upload_file.assert_called_once()
+        # uploaded from the temp file, then the local copy is removed
+        self.assertFalse((Path(self.tmp.name) / 'a.txt').exists())
+        self.assertTrue(FileOperation.objects.filter(operation='MOVE', user=self.user).exists())
+
+    @patch('manager.api_views.get_s3_storage')
+    def test_move_s3_to_local(self, mock_get):
+        mock_s3 = MagicMock()
+
+        def fake_download(key, dest):
+            Path(dest).write_text('downloaded-content')
+
+        mock_s3.download_file.side_effect = fake_download
+        mock_s3.delete_files.return_value = {'success': ['cloud/a.txt'], 'failed': []}
+        mock_get.return_value = mock_s3
+
+        self._reset_local()
+        with override_settings(LOCAL_STORAGE_PATH=self.tmp.name):
+            r = self.client.post('/api/files/move/', {
+                'files': ['cloud/a.txt'], 'source': 's3', 'dest_source': 'local',
+            }, format='json')
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data['success']), 1)
+        # file landed in local storage with the original basename
+        moved = Path(self.tmp.name) / 'a.txt'
+        self.assertTrue(moved.exists())
+        self.assertEqual(moved.read_text(), 'downloaded-content')
+        mock_s3.delete_files.assert_called_once()
+
+    def test_move_rejects_same_source(self):
+        r = self.client.post('/api/files/move/', {
+            'files': ['a'], 'source': 's3', 'dest_source': 's3',
+        }, format='json')
+        self.assertEqual(r.status_code, 400)
+
+
 class OAuthStateTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user('oauth', password='x')

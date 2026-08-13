@@ -432,6 +432,76 @@ class FileManagementViewSet(viewsets.ViewSet):
             )
 
     @action(detail=False, methods=['post'])
+    def move(self, request):
+        """
+        Move files across storage backends (local <-> S3) via copy + delete.
+
+        Request body (JSON):
+            - files: list of file paths/keys
+            - source: 'local' or 's3'
+            - dest_source: 'local' or 's3' (must differ from source)
+            - dest_path: optional destination filename/subpath (defaults to original name)
+        """
+        files = request.data.get('files', [])
+        source = request.data.get('source')
+        dest_source = request.data.get('dest_source')
+        dest_path = request.data.get('dest_path') or ''
+
+        if not files or not source or not dest_source:
+            return Response(
+                {'error': 'files, source, and dest_source are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if source not in ('local', 's3') or dest_source not in ('local', 's3'):
+            return Response(
+                {'error': "source and dest_source must be 'local' or 's3'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if source == dest_source:
+            return Response(
+                {'error': 'source and dest_source must differ (use rename for same-source moves)'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        local = get_local_storage()
+        s3 = get_s3_storage()
+        success, failed = [], []
+
+        for f in files:
+            base = os.path.basename(f) or f.split('/')[-1]
+            # dest_path is treated as a destination directory/prefix so that
+            # moving multiple files does not collide them into one name
+            filename = (dest_path.rstrip('/') + '/' + base) if dest_path else base
+            try:
+                if source == 'local' and dest_source == 's3':
+                    abs_local = local._validate_path(f)  # traversal-safe absolute path
+                    if not abs_local.exists() or not abs_local.is_file():
+                        failed.append({'file': f, 'error': 'File not found'})
+                        continue
+                    s3.upload_file(str(abs_local), filename)  # local -> S3
+                    local.delete_files([f])                  # then remove local
+                elif source == 's3' and dest_source == 'local':
+                    local_dest = str(local._validate_path(filename))  # within LOCAL_STORAGE_PATH
+                    os.makedirs(os.path.dirname(local_dest) or '.', exist_ok=True)
+                    s3.download_file(f, local_dest)  # S3 -> local
+                    s3.delete_files([f])             # then remove S3
+                else:
+                    failed.append({'file': f, 'error': 'Unsupported move'})
+                    continue
+
+                FileOperation.objects.create(
+                    operation='MOVE', user=request.user, source=source,
+                    file_path=filename, old_path=f, success=True,
+                )
+                success.append({'file': f, 'dest': f'{dest_source}:{filename}'})
+            except FileOperationError as e:
+                failed.append({'file': f, 'error': str(e)})
+            except Exception as e:
+                failed.append({'file': f, 'error': str(e)})
+
+        return Response({'success': success, 'failed': failed}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
     def share(self, request):
         """
         Generate a time-limited presigned URL to share an S3 object.
