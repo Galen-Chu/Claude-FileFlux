@@ -5,13 +5,17 @@ Handles all Google Drive operations using the Google Drive API v3.
 Uses OAuth 2.0 tokens stored in CloudStorageToken model.
 """
 
+import json
+
 import requests
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.conf import settings
 
+from .cloud_base import CloudStorageService
 
-class GoogleDriveService:
+
+class GoogleDriveService(CloudStorageService):
     """Service class for Google Drive operations"""
 
     BASE_URL = 'https://www.googleapis.com/drive/v3'
@@ -292,7 +296,7 @@ class GoogleDriveService:
 
             multipart_data = MultipartEncoder(
                 fields={
-                    'metadata': (None, str(metadata).replace("'", '"'), 'application/json'),
+                    'metadata': (None, json.dumps(metadata), 'application/json'),
                     'file': (filename, BytesIO(file_content), mime_type)
                 }
             )

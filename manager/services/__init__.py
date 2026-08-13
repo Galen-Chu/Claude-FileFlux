@@ -9,6 +9,7 @@ from .local_storage import LocalStorage
 from .s3_storage import S3Storage
 from .unified_storage import UnifiedStorage
 from .google_drive_service import GoogleDriveService
+from .onedrive_service import OneDriveService
 from .exceptions import (
     FileOperationError,
     FileNotFoundError,
@@ -25,6 +26,7 @@ __all__ = [
     'S3Storage',
     'UnifiedStorage',
     'GoogleDriveService',
+    'OneDriveService',
     'FileOperationError',
     'FileNotFoundError',
     'PermissionDeniedError',
