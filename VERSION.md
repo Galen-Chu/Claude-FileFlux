@@ -1,13 +1,29 @@
 # FileFlux Version Information
 
-## Current Version: 2.1.0
+## Current Version: 2.2.0
 
-**Release Date:** 2026-08-13
-**Status:** Feature-complete for local/S3/Google Drive/OneDrive + auth; production hardening in progress (see README → Security)
+**Release Date:** 2026-08-14
+**Status:** All planned roadmap features implemented; production hardening in place (see README → Security)
 
 ---
 
 ## Version History
+
+### Version 2.2.0 (2026-08-14)
+
+**New Features:**
+- **Pagination + infinite scroll** for local/S3 listings (all sources now paginate)
+- **Browser streaming download** for local/S3 with progress bar; **cancel** for in-progress uploads/downloads
+- **File preview** modal (images/PDFs; inline serving + Google Drive embed URLs)
+- **Shareable links** — time-limited S3 presigned URLs with copy-to-clipboard
+- **Drag-and-drop upload** to S3 / Google Drive current folder
+- **Cross-source move** (local ↔ S3) via copy + delete, with `MOVE` audit operations
+- **Bi-directional local ↔ S3 sync** — preview-first, last-write-wins, timestamp convergence; `SyncRun` model; `manage.py sync_storage [--dry-run]` for cron
+- **S3 version history** — list / download / restore versions; `manage.py enable_s3_versioning`
+
+**Tests:** 43 automated tests.
+
+---
 
 ### Version 2.1.0 (2026-08-13)
 

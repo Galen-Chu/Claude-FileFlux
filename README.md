@@ -1,13 +1,13 @@
 # FileFlux — Unified Cloud File Manager
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](./VERSION.md)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](./VERSION.md)
 [![Django](https://img.shields.io/badge/Django-6.0.2-green.svg)](https://www.djangoproject.com/)
 [![Python](https://img.shields.io/badge/Python-3.14+-brightgreen.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen.svg)](#-development)
+[![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen.svg)](#-development)
 
 A Django + Django REST Framework application that gives you one authenticated interface for managing files across **local storage, AWS S3, Google Drive, and OneDrive**, with a responsive web UI, a REST API, per-user audit logging, and OAuth tokens encrypted at rest.
 
-> **Status:** v2.1.0 — feature-complete for local/S3/Google Drive/OneDrive file operations and authentication. Production-grade security hardening is in place but a production deployment still needs HTTPS, a real WSGI server, and managed secrets (see [Security](#-security)).
+> **Status:** v2.2.0 — all planned roadmap features are implemented (file operations, pagination, transfers, preview, sharing, drag-and-drop, move, bi-directional sync, versioning) plus authentication and security hardening. A production deployment still needs HTTPS, a real WSGI server, and managed secrets (see [Security](#-security)).
 
 ## ✨ Key Features
 
@@ -20,8 +20,14 @@ A Django + Django REST Framework application that gives you one authenticated in
 **File operations**
 - 🔄 **Bulk rename** with prefix / suffix / **find-and-replace** modes, optional zero-padded sequential numbering, and regex support
 - 🗑️ Bulk delete, upload, download
-- 🔍 **Server-side filename search** over local/S3 listings (`?search=`)
-- 📝 **Per-user audit logging** of every operation
+- 📄 **Pagination + infinite scroll** across all sources; **filename search** (`?search=`) over local/S3
+- ⬇️ **Browser streaming download** with progress bar and **cancellable** uploads/downloads
+- 👁️ **File preview** (images/PDFs) in a modal
+- 🖱️ **Drag-and-drop upload** to S3 / Google Drive, **cross-source move** (local ↔ S3)
+- 🔗 **Shareable links** for S3 objects (time-limited presigned URLs)
+- 🔄 **Bi-directional local ↔ S3 sync** — preview-first, last-write-wins, timestamp convergence (`manage.py sync_storage` for cron)
+- 🕘 **S3 version history** — list, download, and restore old versions (`manage.py enable_s3_versioning` to set up)
+- 📝 **Per-user audit logging** of every operation + `SyncRun` summaries
 
 **Auth & security**
 - 👤 User registration / login (session auth for the web UI, DRF **token auth** for the API); all endpoints require authentication
@@ -33,7 +39,7 @@ A Django + Django REST Framework application that gives you one authenticated in
 **Architecture**
 - 🏗️ Strategy-pattern service layer (`BaseStorage` for local/S3; `CloudStorageService` for cloud providers)
 - 🎨 Responsive Tailwind CSS UI, upload/download progress bars, Google Drive infinite-scroll pagination
-- ✅ 22 automated tests (`python manage.py test`)
+- ✅ 43 automated tests (`python manage.py test`)
 
 ## 🚀 Quick Start
 
@@ -213,15 +219,13 @@ Django 6.0.2, Django REST Framework 3.16.1, boto3 1.42.59, python-dotenv 1.2.2, 
 
 ## 🗺️ Roadmap
 
-**Done in v2.1.0:** OneDrive file operations, token encryption at rest, OAuth CSRF hardening, per-user audit logs, API filename search, test suite.
+**All planned features are implemented** — OneDrive integration, security hardening, per-user audit logs, pagination + infinite scroll, browser downloads with progress/cancel, file preview, drag-and-drop upload, cross-source move, presigned share links, bi-directional sync, and S3 versioning.
 
-**Remaining:**
-- [ ] Local/S3 pagination + infinite scroll in the UI
-- [ ] S3 download progress + cancel in-progress transfers
-- [ ] File preview (images/PDFs)
-- [ ] Drag & drop upload / move files
-- [ ] Shareable links (S3 presigned URLs)
-- [ ] Bi-directional local↔S3 sync, file versioning
+**Future ideas (not scheduled):**
+- [ ] True S3 continuation-token pagination (for very large buckets)
+- [ ] Background sync scheduler (currently cron + `sync_storage`)
+- [ ] Google Drive sync / sharing parity
+- [ ] Local file versioning
 
 See [VERSION.md](./VERSION.md) and [CHANGELOG.md](./CHANGELOG.md) for history.
 
@@ -229,4 +233,4 @@ See [VERSION.md](./VERSION.md) and [CHANGELOG.md](./CHANGELOG.md) for history.
 For educational and development purposes.
 
 ---
-**Version:** 2.1.0 · **Updated:** 2026-08-13
+**Version:** 2.2.0 · **Updated:** 2026-08-14

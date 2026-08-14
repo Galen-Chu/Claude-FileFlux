@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2026-08-14
+
+### Added
+- **Local/S3 pagination**: `page`/`page_size` on `/api/files/` (returns `total`/`has_next`/`next_page`); infinite scroll enabled for all sources.
+- **Browser streaming download** (`GET /api/files/download-file/`) for local and S3 with progress; the UI Download button now saves to the browser. `?inline=1` serves preview-friendly content.
+- **Cancel transfers**: Cancel buttons abort in-progress uploads/downloads (XHR abort).
+- **File preview**: modal viewer for images/PDFs (inline URL for local/S3, embed URLs for Google Drive).
+- **Share links**: `POST /api/files/share/` generates time-limited S3 presigned URLs (expiry clamped 60s–7d); UI Share button with copy-to-clipboard.
+- **Drag-and-drop upload**: the file table is a drop zone targeting the active cloud source.
+- **Cross-source move**: `POST /api/files/move/` (local ↔ S3 via copy + delete, destination folder prefix); `MOVE` audit operation (migration 0005).
+- **Bi-directional sync**: `SyncService` (last-write-wins, 2s epsilon, timestamp convergence so pairs don't ping-pong), `SyncRun` model (migration 0006), `/api/files/sync-preview/` + `/api/files/sync-run/`, `manage.py sync_storage [--dry-run]`.
+- **S3 versioning**: `/api/files/versions/` list, `/api/files/versions/restore/`, `version_id` on download-file, `manage.py enable_s3_versioning`.
+
+### Tests
+- Suite grown from 22 to 43 tests (pagination, streaming download, share links, move, sync plan/execute/convergence, versioning — S3 paths mocked).
+
+---
+
 ## [2.1.0] - 2026-08-13
 
 ### Added
