@@ -75,6 +75,56 @@ class FileOperation(models.Model):
         return f"{status} {self.get_operation_display()} - {self.file_path}"
 
 
+class SyncRun(models.Model):
+    """Summary record of one local <-> S3 sync execution"""
+
+    STATUS_CHOICES = [
+        ('running', 'Running'),
+        ('success', 'Success'),
+        ('failed', 'Failed'),
+    ]
+
+    dry_run = models.BooleanField(
+        default=False,
+        help_text='True if the plan was only simulated'
+    )
+    started_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When the run started'
+    )
+    finished_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the run finished (null while running)'
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='running',
+        help_text='Run status'
+    )
+    pushed = models.IntegerField(
+        default=0,
+        help_text='Files copied local -> S3'
+    )
+    pulled = models.IntegerField(
+        default=0,
+        help_text='Files copied S3 -> local'
+    )
+    failed_count = models.IntegerField(
+        default=0,
+        help_text='Files that failed to copy'
+    )
+    error_message = models.TextField(
+        blank=True,
+        default='',
+        help_text='Fatal error message if the run failed'
+    )
+
+    def __str__(self):
+        return f"Sync #{self.id} ({self.status}{', dry-run' if self.dry_run else ''})"
+
+
 class CloudStorageToken(models.Model):
     """Store OAuth tokens for cloud storage providers"""
 

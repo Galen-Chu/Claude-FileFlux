@@ -8,12 +8,13 @@ from pathlib import Path
 
 from django.conf import settings
 from django.http import FileResponse, StreamingHttpResponse
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from .models import FileOperation
+from .models import FileOperation, SyncRun
 from .serializers import (
     FileInfoSerializer,
     FileListRequestSerializer,
@@ -24,6 +25,7 @@ from .serializers import (
     OperationResultSerializer,
 )
 from .services import get_local_storage, get_s3_storage, get_unified_storage
+from .services.sync_service import SyncService
 from .services.exceptions import FileOperationError
 
 
@@ -400,12 +402,16 @@ class FileManagementViewSet(viewsets.ViewSet):
 
             elif source == 's3':
                 s3 = get_s3_storage()
+                version_id = request.query_params.get('version_id')
+                key_params = {'Bucket': s3.bucket_name, 'Key': path}
+                if version_id:
+                    key_params['VersionId'] = version_id  # 'null' is a valid version id
                 try:
-                    head = s3.client.head_object(Bucket=s3.bucket_name, Key=path)
+                    head = s3.client.head_object(**key_params)
                 except Exception:
                     return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
 
-                obj = s3.client.get_object(Bucket=s3.bucket_name, Key=path)
+                obj = s3.client.get_object(**key_params)
                 response = StreamingHttpResponse(
                     obj['Body'].iter_chunks(chunk_size=8192),
                     content_type=obj.get('ContentType', 'application/octet-stream'),
@@ -428,6 +434,145 @@ class FileManagementViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response(
                 {'error': f'Download failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=['get'], url_path='sync-preview')
+    def sync_preview(self, request):
+        """
+        Preview a local <-> S3 sync (dry run; no writes).
+        Returns the action list plus summary counts.
+        """
+        try:
+            storage = get_unified_storage()
+            service = SyncService(storage.local_storage, storage.s3_storage)
+            plan = service.build_plan()
+            pushes = sum(1 for a in plan['actions'] if a['direction'] == 'push')
+            return Response({
+                'actions': plan['actions'],
+                'unchanged': plan['unchanged'],
+                'to_upload': pushes,
+                'to_download': len(plan['actions']) - pushes,
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to build sync plan: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=['post'], url_path='sync-run')
+    def sync_run(self, request):
+        """
+        Execute a local <-> S3 sync (last-write-wins). Body: {'dry_run': bool}.
+        """
+        dry_run = request.data.get('dry_run', False) is True
+        run = SyncRun.objects.create(dry_run=dry_run)
+        try:
+            storage = get_unified_storage()
+            service = SyncService(storage.local_storage, storage.s3_storage)
+            plan = service.build_plan()
+            result = service.execute(plan, dry_run=dry_run)
+
+            pushed = sum(1 for x in result['executed'] if x['direction'] == 'push')
+            pulled = sum(1 for x in result['executed'] if x['direction'] == 'pull')
+            run.pushed = pushed
+            run.pulled = pulled
+            run.failed_count = len(result['failed'])
+            run.status = 'success'
+            run.finished_at = timezone.now()
+            run.save()
+
+            for x in result['executed']:
+                if x['direction'] == 'push':
+                    FileOperation.objects.create(
+                        operation='UPLOAD', user=request.user, source='local',
+                        file_path=x['path'], success=True,
+                    )
+                else:
+                    FileOperation.objects.create(
+                        operation='DOWNLOAD', user=request.user, source='s3',
+                        file_path=x['path'], success=True,
+                    )
+
+            return Response({
+                'executed': result['executed'],
+                'failed': result['failed'],
+                'pushed': pushed,
+                'pulled': pulled,
+                'unchanged': plan['unchanged'],
+                'run_id': run.id,
+            })
+        except Exception as e:
+            run.status = 'failed'
+            run.error_message = str(e)[:2000]
+            run.finished_at = timezone.now()
+            run.save()
+            return Response(
+                {'error': f'Sync failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=['get'], url_path='versions')
+    def versions(self, request):
+        """
+        List versions of an S3 object (requires bucket versioning enabled).
+
+        Query params:
+            - path: S3 object key
+        """
+        path = request.query_params.get('path')
+        if not path:
+            return Response({'error': 'path is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            s3 = get_s3_storage()
+            resp = s3.client.list_object_versions(Bucket=s3.bucket_name, Prefix=path)
+            versions = []
+            for v in resp.get('Versions', []):
+                if v.get('Key') != path:
+                    continue  # Prefix match can include other keys
+                versions.append({
+                    'version_id': v.get('VersionId') or 'null',
+                    'last_modified': v['LastModified'].isoformat() if v.get('LastModified') else None,
+                    'size': v.get('Size', 0),
+                    'is_latest': v.get('IsLatest', False),
+                })
+            return Response({'path': path, 'versions': versions, 'count': len(versions)})
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to list versions: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=['post'], url_path='versions/restore')
+    def versions_restore(self, request):
+        """
+        Restore an old S3 version as the latest (server-side copy over the key).
+
+        Request body (JSON):
+            - path: S3 object key
+            - version_id: version to restore ('null' for the null version)
+        """
+        path = request.data.get('path')
+        version_id = request.data.get('version_id')
+        if not path or not version_id:
+            return Response(
+                {'error': 'path and version_id are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            s3 = get_s3_storage()
+            copy_source = {'Bucket': s3.bucket_name, 'Key': path}
+            if version_id != 'null':
+                copy_source['VersionId'] = version_id
+            s3.client.copy_object(Bucket=s3.bucket_name, CopySource=copy_source, Key=path)
+            FileOperation.objects.create(
+                operation='UPLOAD', user=request.user, source='s3',
+                file_path=path, success=True,
+            )
+            return Response({'success': True, 'message': 'Version restored as latest'})
+        except Exception as e:
+            return Response(
+                {'error': f'Restore failed: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

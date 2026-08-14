@@ -10,6 +10,7 @@ from .s3_storage import S3Storage
 from .unified_storage import UnifiedStorage
 from .google_drive_service import GoogleDriveService
 from .onedrive_service import OneDriveService
+from .sync_service import SyncService
 from .exceptions import (
     FileOperationError,
     FileNotFoundError,
@@ -27,6 +28,7 @@ __all__ = [
     'UnifiedStorage',
     'GoogleDriveService',
     'OneDriveService',
+    'SyncService',
     'FileOperationError',
     'FileNotFoundError',
     'PermissionDeniedError',
