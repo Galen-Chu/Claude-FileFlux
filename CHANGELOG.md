@@ -21,8 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `architecture.md` (merged tech deep-dives, current state), `history.md` (merged
   PLAN_ documents), plus an index. Redundant session logs (QUICKSTART, ROADMAP,
   RELEASE_NOTES, IMPLEMENTATION_SUMMARY, TESTING_*, *_ANALYSIS, superseded
-  TECH_OAUTH demo doc) removed. README trimmed and its API reference completed
-  with the 2.2/2.3 endpoints.
+  TECH_OAUTH demo doc) removed. README trimmed, made bilingual
+  (English / Traditional Chinese, paired side by side), and its API reference
+  completed with the 2.2/2.3 endpoints.
 
 ---
 
