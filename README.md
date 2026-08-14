@@ -5,6 +5,8 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-brightgreen.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen.svg)](#development)
 
+---
+
 A Django + DRF application giving one authenticated interface for files across
 **local storage, AWS S3 (or MinIO), Google Drive, and OneDrive** — web UI + REST API,
 per-user audit logging, OAuth tokens encrypted at rest, containerized deployment.
@@ -15,6 +17,8 @@ per-user audit logging, OAuth tokens encrypted at rest, containerized deployment
 > needs HTTPS and managed secrets (see [Security](#security)).
 >
 > v2.3.0 —— 規劃中的 Roadmap 功能已全部完成。正式環境仍需 HTTPS 與受管理的金鑰（見[安全性](#security)）。
+
+---
 
 <a id="features"></a>
 ## ✨ Features · 功能特色
@@ -41,6 +45,8 @@ per-user audit logging, OAuth tokens encrypted at rest, containerized deployment
   · 全端點皆需認證、Token 靜態加密、OAuth state 防 CSRF、速率限制、路徑防護
 - 43 automated tests 自動化測試；Docker deployment with optional MinIO backend
   附可選 MinIO 後端的容器化部署
+
+---
 
 <a id="quick-start"></a>
 ## 🚀 Quick Start · 快速開始
@@ -70,6 +76,8 @@ Key env vars (full list in [.env.template](./.env.template)): `DJANGO_SECRET_KEY
 [docs/oauth-setup.md](./docs/oauth-setup.md)).
 
 重要環境變數（完整清單見 [.env.template](./.env.template)）：`DJANGO_SECRET_KEY`、`DEBUG`、`ALLOWED_HOSTS`、`FILEFLUX_ENCRYPTION_KEY`、`S3_ENDPOINT_URL`、`AWS_*`/`BUCKET_NAME`、`GOOGLE_*`／`MS_*`（OAuth 申請教學見 [docs/oauth-setup.md](./docs/oauth-setup.md)）。
+
+---
 
 <a id="usage"></a>
 ## 📖 Usage · 使用方式
@@ -121,6 +129,8 @@ curl -H "Authorization: Token $T" localhost:8000/api/files/sync-preview/
 | `/api/cloud/files/{id}/` | DELETE | Delete · 刪除 |
 | `/api/cloud/files/{id}/rename/` | PATCH | Rename · 重新命名（`new_name`） |
 
+---
+
 <a id="architecture"></a>
 ## 🏗️ Architecture · 架構
 
@@ -140,6 +150,8 @@ connect/callback flows live in `cloud_views.py` / `oauth_views.py`.
 Details: [docs/architecture.md](./docs/architecture.md), conventions: [CLAUDE.md](./CLAUDE.md).
 詳細設計見 [docs/architecture.md](./docs/architecture.md)，開發慣例見 [CLAUDE.md](./CLAUDE.md)。
 
+---
+
 <a id="security"></a>
 ## 🔒 Security · 安全性
 
@@ -154,6 +166,8 @@ strong `DJANGO_SECRET_KEY` / `FILEFLUX_ENCRYPTION_KEY` from a secrets manager �
 `DEBUG=False` + correct `ALLOWED_HOSTS`、rotating the committed dev secret key
 更換 repo 內建的開發用金鑰。
 
+---
+
 <a id="development"></a>
 ## 🛠️ Development · 開發
 
@@ -167,6 +181,8 @@ Full guide (commands, conventions, gotchas) · 完整開發指南（指令、慣
 **Dependencies · 依賴：** Django 6.0.2 · DRF 3.16.1 · boto3 · python-dotenv · requests ·
 requests-toolbelt · cryptography · gunicorn + whitenoise (Docker)。SQLite in development 開發環境使用 SQLite。
 
+---
+
 <a id="roadmap"></a>
 ## 🗺️ Roadmap · 路線圖
 
@@ -176,8 +192,24 @@ background sync scheduler 背景同步排程器、Google Drive sync/sharing pari
 Google Drive 同步／分享對等、local file versioning 本機版本控。
 History · 歷史： [CHANGELOG](./CHANGELOG.md) · [docs/history.md](./docs/history.md)。
 
-## 📄 License · 授權
-For educational and development purposes · 供教育與開發用途。
+---
+
+<a id="license"></a>
+## 📝 授權 / License
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
+本專案採 [MIT 授權](https://opensource.org/licenses/MIT)。
+Released under the [MIT License](https://opensource.org/licenses/MIT) — see [LICENSE](LICENSE).
+
+Copyright (c) 2026 FETCHGen Team.
+
+---
+
+<a id="author"></a>
+## 👤 作者 / Author
+
+**Galen-Chu**
 
 ---
 **Version:** 2.3.0 · **Updated:** 2026-08-14
