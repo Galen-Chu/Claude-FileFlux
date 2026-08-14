@@ -21,7 +21,8 @@ class S3Storage(BaseStorage):
     """AWS S3 storage backend"""
 
     def __init__(self, bucket_name: str, region: str = 'us-east-1',
-                 access_key: str = None, secret_key: str = None):
+                 access_key: str = None, secret_key: str = None,
+                 endpoint_url: str = None):
         """
         Initialize S3 storage
 
@@ -30,18 +31,21 @@ class S3Storage(BaseStorage):
             region: AWS region
             access_key: AWS access key (optional, uses env if not provided)
             secret_key: AWS secret key (optional, uses env if not provided)
+            endpoint_url: optional endpoint for S3-compatible services (e.g. MinIO)
         """
         self.bucket_name = bucket_name
         self.region = region
 
         # Initialize S3 client
         try:
-            self.client = boto3.client(
-                's3',
-                region_name=region,
-                aws_access_key_id=access_key or os.getenv('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=secret_key or os.getenv('AWS_SECRET_ACCESS_KEY'),
-            )
+            client_kwargs = {
+                'region_name': region,
+                'aws_access_key_id': access_key or os.getenv('AWS_ACCESS_KEY_ID'),
+                'aws_secret_access_key': secret_key or os.getenv('AWS_SECRET_ACCESS_KEY'),
+            }
+            if endpoint_url:
+                client_kwargs['endpoint_url'] = endpoint_url
+            self.client = boto3.client('s3', **client_kwargs)
         except NoCredentialsError as e:
             raise StorageConnectionError(
                 "Failed to initialize S3 client: No credentials provided",

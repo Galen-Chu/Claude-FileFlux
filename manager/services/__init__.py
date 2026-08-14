@@ -79,6 +79,7 @@ def get_s3_storage() -> S3Storage:
             region=settings.AWS_REGION,
             access_key=settings.AWS_ACCESS_KEY_ID,
             secret_key=settings.AWS_SECRET_ACCESS_KEY,
+            endpoint_url=getattr(settings, 'S3_ENDPOINT_URL', '') or None,
         )
 
     return _s3_storage_instance

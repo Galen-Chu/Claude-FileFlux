@@ -1,0 +1,19 @@
+# Never copy into the image
+venv/
+env/
+.env
+.env.local
+db.sqlite3
+db.sqlite3-journal
+storage/
+staticfiles/
+server.log
+server.err
+__pycache__/
+*.py[cod]
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+docs/
