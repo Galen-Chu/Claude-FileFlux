@@ -17,7 +17,7 @@
 - **S3-compatible endpoint support** — `S3_ENDPOINT_URL` env var points boto3 at MinIO / DigitalOcean Spaces / etc.
 - Configurable SQLite path (`DB_PATH`) for volume-mounted deployments
 
-**Docs:** historical/deep-dive markdown moved to `docs/` with an index.
+**Docs:** consolidated — root keeps README/VERSION/CHANGELOG/CLAUDE.md; `docs/` holds `oauth-setup.md`, `architecture.md`, and `history.md` (merged from the original guides/PLAN documents) with an index; redundant session logs removed.
 
 ---
 

@@ -16,7 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - whitenoise middleware + `STATIC_ROOT` so the container serves static files; gunicorn + whitenoise added to requirements.
 
 ### Changed
-- Documentation reorganized: root keeps README/VERSION/CHANGELOG/CLAUDE.md; historical and deep-dive docs moved under `docs/` with an index.
+- Documentation consolidated and condensed: root keeps README/VERSION/CHANGELOG/CLAUDE.md;
+  `docs/` reduced to four files — `oauth-setup.md` (merged provider guides),
+  `architecture.md` (merged tech deep-dives, current state), `history.md` (merged
+  PLAN_ documents), plus an index. Redundant session logs (QUICKSTART, ROADMAP,
+  RELEASE_NOTES, IMPLEMENTATION_SUMMARY, TESTING_*, *_ANALYSIS, superseded
+  TECH_OAUTH demo doc) removed. README trimmed and its API reference completed
+  with the 2.2/2.3 endpoints.
 
 ---
 

@@ -5,243 +5,136 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-brightgreen.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen.svg)](#-development)
 
-A Django + Django REST Framework application that gives you one authenticated interface for managing files across **local storage, AWS S3, Google Drive, and OneDrive**, with a responsive web UI, a REST API, per-user audit logging, and OAuth tokens encrypted at rest.
+A Django + DRF application giving one authenticated interface for files across
+**local storage, AWS S3 (or MinIO), Google Drive, and OneDrive** — web UI + REST API,
+per-user audit logging, OAuth tokens encrypted at rest, containerized deployment.
 
-> **Status:** v2.3.0 — all planned roadmap features are implemented (file operations, pagination, transfers, preview, sharing, drag-and-drop, move, bi-directional sync, versioning) plus authentication, security hardening, and containerized deployment (Docker + optional MinIO). A production deployment still needs HTTPS and managed secrets (see [Security](#-security)).
+> **Status:** v2.3.0 — all planned roadmap features implemented. Production still needs
+> HTTPS and managed secrets (see [Security](#-security)).
 
-## ✨ Key Features
+## ✨ Features
 
-**Storage backends**
-- 📁 **Local filesystem** and **AWS S3** (S3-compatible: MinIO, DigitalOcean Spaces, etc.)
-- ☁️ **Google Drive** — full file operations via the Drive API v3 (list, upload, download, create folder, delete, rename, folder navigation, token refresh)
-- ☁️ **OneDrive** — full file operations via the Microsoft Graph API
-- 🔗 **Cloud drives share a uniform service interface** (`CloudStorageService`), so the API treats every provider the same
-
-**File operations**
-- 🔄 **Bulk rename** with prefix / suffix / **find-and-replace** modes, optional zero-padded sequential numbering, and regex support
-- 🗑️ Bulk delete, upload, download
-- 📄 **Pagination + infinite scroll** across all sources; **filename search** (`?search=`) over local/S3
-- ⬇️ **Browser streaming download** with progress bar and **cancellable** uploads/downloads
-- 👁️ **File preview** (images/PDFs) in a modal
-- 🖱️ **Drag-and-drop upload** to S3 / Google Drive, **cross-source move** (local ↔ S3)
-- 🔗 **Shareable links** for S3 objects (time-limited presigned URLs)
-- 🔄 **Bi-directional local ↔ S3 sync** — preview-first, last-write-wins, timestamp convergence (`manage.py sync_storage` for cron)
-- 🕘 **S3 version history** — list, download, and restore old versions (`manage.py enable_s3_versioning` to set up)
-- 📝 **Per-user audit logging** of every operation + `SyncRun` summaries
-
-**Auth & security**
-- 👤 User registration / login (session auth for the web UI, DRF **token auth** for the API); all endpoints require authentication
-- 🔐 **OAuth tokens encrypted at rest** (Fernet) — plaintext never stored in the DB
-- 🛡️ OAuth **`state` CSRF nonce** validated on every cloud callback
-- 🚦 **Rate limiting** (anon 60/min, authenticated 300/min)
-- 🧱 Path-traversal validation, file-size limits, input sanitization
-
-**Architecture**
-- 🏗️ Strategy-pattern service layer (`BaseStorage` for local/S3; `CloudStorageService` for cloud providers)
-- 🎨 Responsive Tailwind CSS UI, upload/download progress bars, Google Drive infinite-scroll pagination
-- ✅ 43 automated tests (`python manage.py test`)
+- **Four backends, two contracts** — local/S3 (`BaseStorage`) and Google Drive/OneDrive
+  (`CloudStorageService`), so cloud providers are interchangeable
+- **Bulk rename** — prefix / suffix / find-and-replace, regex, sequential numbering
+- **Pagination + infinite scroll** on all sources; **filename search** on local/S3
+- **Transfers** — browser streaming download with progress, cancellable uploads/downloads
+- **Preview** images/PDFs; **share** S3 objects via time-limited presigned URLs
+- **Drag-and-drop upload** (S3 / Google Drive); **cross-source move** (local ↔ S3)
+- **Bi-directional local ↔ S3 sync** — preview-first, last-write-wins, timestamp
+  convergence; `manage.py sync_storage` for cron
+- **S3 version history** — list/download/restore; `manage.py enable_s3_versioning`
+- **Auth & security** — session + token auth everywhere, tokens encrypted at rest
+  (Fernet), OAuth `state` CSRF nonce, rate limiting, path-traversal validation
+- 43 automated tests; Docker deployment with optional MinIO backend
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.14+
-- An AWS account (for S3), and Google Cloud / Microsoft Azure projects (for cloud drives) — only needed for those features
-
-### Installation
 ```bash
-# 1. Create + activate a virtual environment
-python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # Linux/macOS
-
-# 2. Install dependencies
+python -m venv venv && venv\Scripts\activate   # Windows (source venv/bin/activate on unix)
 pip install -r requirements.txt
-
-# 3. Configure environment
-cp .env.template .env           # then edit .env (see below)
-
-# 4. Apply migrations and create a user
-python manage.py migrate
-python manage.py createsuperuser   # or register via /register/
-
-# 5. Run
-python manage.py runserver
+cp .env.template .env                          # fill in what you need (see file for all vars)
+python manage.py migrate && python manage.py createsuperuser
+python manage.py runserver                     # http://127.0.0.1:8000/
 ```
 
-Open http://127.0.0.1:8000/ (file manager at `/manager/`, API browser at `/api/files/`).
+**Docker:** `cp .env.template .env` (set a strong `DJANGO_SECRET_KEY`) then
+`docker compose up --build` — gunicorn + whitenoise, auto-migrations, SQLite and
+storage on named volumes. Uncomment the `minio` service in `docker-compose.yml` and
+set `S3_ENDPOINT_URL=http://minio:9000` for a local S3 backend.
 
-### Run with Docker (optional)
-```bash
-cp .env.template .env    # set a strong DJANGO_SECRET_KEY
-docker compose up --build
-# open http://localhost:8000/ and register a user
-```
-The compose file runs gunicorn + whitenoise (migrations apply automatically) with the
-SQLite DB and local storage on named volumes. To use a local S3-compatible backend,
-uncomment the `minio` service in `docker-compose.yml` and point `.env` at it
-(`S3_ENDPOINT_URL=http://minio:9000`) — see the comments in the compose file.
-
-### Environment variables (`.env`)
-```env
-# Django
-DJANGO_SECRET_KEY=change-me-to-a-long-random-string   # required for production
-DEBUG=True                                            # set False in production
-ALLOWED_HOSTS=localhost,127.0.0.1                      # comma-separated
-
-# Token encryption (Fernet urlsafe base64). If unset, one is derived from SECRET_KEY.
-# Generate one: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-FILEFLUX_ENCRYPTION_KEY=
-
-# AWS / S3
-AWS_ACCESS_KEY=...
-AWS_SECRET_KEY=...
-BUCKET_NAME=...
-AWS_REGION=us-east-1
-
-# Local storage
-LOCAL_STORAGE_PATH=./storage
-MAX_UPLOAD_SIZE_MB=100
-
-# Google Drive OAuth
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-
-# Microsoft OneDrive OAuth
-MS_CLIENT_ID=...
-MS_CLIENT_SECRET=...
-MS_TENANT_ID=common
-
-# OAuth callback (must match the redirect URI registered with Google/Microsoft)
-OAUTH_REDIRECT_URI=http://localhost:8000/oauth/callback/
-```
+Key env vars (full list in [.env.template](./.env.template)): `DJANGO_SECRET_KEY`,
+`DEBUG`, `ALLOWED_HOSTS`, `FILEFLUX_ENCRYPTION_KEY`, `S3_ENDPOINT_URL`,
+`AWS_*`/`BUCKET_NAME`, `GOOGLE_*` / `MS_*` (OAuth — see [docs/oauth-setup.md](./docs/oauth-setup.md)).
 
 ## 📖 Usage
 
-### Web UI
-1. Register at `/register/` and log in.
-2. Use the **file manager** (`/manager/`) — filter by source (All / Local / S3 / Google Drive), select files for bulk rename/delete, upload/download.
-3. On your **profile** (`/profile/`), connect/disconnect Google Drive and OneDrive (real OAuth flow; runs against the provider once credentials are configured).
+**Web UI:** register at `/register/`; manage files at `/manager/` (tabs per source,
+bulk select, rename/delete/move, upload/download with progress, preview, share,
+sync, drag-and-drop); connect cloud drives on `/profile/`.
 
-### REST API
-All endpoints require auth. Pass `Authorization: Token <your-token>` (get a token via the Django admin or `rest_framework.authtoken`), or log in for session auth.
+**API** — all endpoints require auth (`Authorization: Token <token>`, or session):
 
-**Local / S3 files**
 ```bash
-TOKEN=...   # DRF token
-
-# List local files (with optional search)
-curl -H "Authorization: Token $TOKEN" \
-  "http://127.0.0.1:8000/api/files/?source=local&search=invoice"
-
-# Bulk rename: find-and-replace + sequential numbering
-curl -X POST http://127.0.0.1:8000/api/files/rename/ \
-  -H "Authorization: Token $TOKEN" -H "Content-Type: application/json" \
-  -d '{"files":["doc1.txt","doc2.txt"],"text":"final","mode":"suffix",
-       "add_sequence":true,"start_number":1,"source":"local"}'
-
-# Upload to S3
-curl -X POST http://127.0.0.1:8000/api/files/upload/ \
-  -H "Authorization: Token $TOKEN" -F "file=@local.txt" -F "dest_path=remote.txt"
-
-# Audit logs
-curl -H "Authorization: Token $TOKEN" "http://127.0.0.1:8000/api/files/logs/?limit=20"
+# List local files with search + pagination
+curl -H "Authorization: Token $T" "localhost:8000/api/files/?source=local&search=invoice&page=1"
+# Bulk rename (find-and-replace + numbering)
+curl -X POST -H "Authorization: Token $T" -H "Content-Type: application/json" \
+  -d '{"files":["a.txt","b.txt"],"text":"final","mode":"suffix","add_sequence":true,"source":"local"}' \
+  localhost:8000/api/files/rename/
+# Preview a sync plan, then run it
+curl -H "Authorization: Token $T" localhost:8000/api/files/sync-preview/
 ```
 
-**Cloud drives** (`provider=googledrive` or `onedrive`)
-```bash
-# List files
-curl -H "Authorization: Token $TOKEN" \
-  "http://127.0.0.1:8000/api/cloud/files/?provider=googledrive"
-
-# Upload to a cloud drive
-curl -X POST http://127.0.0.1:8000/api/cloud/upload/ \
-  -H "Authorization: Token $TOKEN" -F "file=@local.txt" -F "provider=onedrive"
-
-# Rename a cloud file
-curl -X PATCH http://127.0.0.1:8000/api/cloud/files/<file_id>/rename/ \
-  -H "Authorization: Token $TOKEN" -H "Content-Type: application/json" \
-  -d '{"new_name":"renamed.txt","provider":"googledrive"}'
-```
-
-## 🔌 API Reference
-
-### Local / S3 (`/api/files/`)
+### API Reference — Local / S3 (`/api/files/`)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/files/` | GET | List files (`source=local\|s3`, `path=`, `search=`) |
+| `/api/files/` | GET | List (`source`, `path`, `search`, `page`, `page_size`) |
 | `/api/files/rename/` | POST | Bulk rename (prefix/suffix/replace + sequence) |
 | `/api/files/delete/` | POST | Bulk delete |
 | `/api/files/upload/` | POST | Upload to S3 |
-| `/api/files/download/` | POST | Download from S3 to local |
+| `/api/files/download/` | POST | Copy S3 → server local storage |
+| `/api/files/download-file/` | GET | Stream to browser (`source`, `path`, `inline=1` for preview, `version_id`) |
+| `/api/files/move/` | POST | Move local ↔ S3 (`files`, `source`, `dest_source`, `dest_path?`) |
+| `/api/files/share/` | POST | Time-limited presigned S3 URL (`path`, `expires_in?`) |
+| `/api/files/versions/` | GET | S3 version list (`path`) |
+| `/api/files/versions/restore/` | POST | Restore old version as latest (`path`, `version_id`) |
+| `/api/files/sync-preview/` | GET | Local ↔ S3 sync plan (dry run) |
+| `/api/files/sync-run/` | POST | Execute sync |
 | `/api/files/logs/` | GET | Per-user audit logs |
 
-### Cloud drives (`/api/cloud/`)
+### API Reference — Cloud drives (`/api/cloud/`, `provider=googledrive\|onedrive`)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/cloud/files/` | GET | List files (`provider`, `folder_id`, `page_token`, `query`) |
-| `/api/cloud/files/{id}/` | GET | File metadata (`provider`) |
-| `/api/cloud/upload/` | POST | Upload (`file`, `provider`, `parent_folder_id?`) |
-| `/api/cloud/download/` | POST | Download (`file_id`, `provider`) |
-| `/api/cloud/create-folder/` | POST | Create folder (`name`, `provider`) |
-| `/api/cloud/files/{id}/` | DELETE | Delete (`provider`) |
-| `/api/cloud/files/{id}/rename/` | PATCH | Rename (`new_name`, `provider`) |
+| `/api/cloud/files/` | GET | List (`folder_id`, `page_token`, `query`) |
+| `/api/cloud/files/{id}/` | GET | File metadata |
+| `/api/cloud/upload/` | POST | Upload (`file`, `parent_folder_id?`) |
+| `/api/cloud/download/` | POST | Download to browser (`file_id`) |
+| `/api/cloud/create-folder/` | POST | Create folder (`name`) |
+| `/api/cloud/files/{id}/` | DELETE | Delete |
+| `/api/cloud/files/{id}/rename/` | PATCH | Rename (`new_name`) |
 
 ## 🏗️ Architecture
 
 ```
-BaseStorage (abstract)            CloudStorageService (abstract)
-    ├── LocalStorage                  ├── GoogleDriveService   (Drive API v3)
-    ├── S3Storage                     └── OneDriveService      (Graph API)
-    └── UnifiedStorage (local + S3)        └── CloudDriveViewSet (provider-agnostic)
+BaseStorage (abstract)             CloudStorageService (abstract)
+    ├── LocalStorage                   ├── GoogleDriveService   (Drive API v3)
+    ├── S3Storage                      └── OneDriveService      (Graph API)
+    └── UnifiedStorage + SyncService        └── CloudDriveViewSet (provider-agnostic)
 ```
 
-- **Service layer** (`manager/services/`) — storage backends, cloud providers, and the cloud-drive connection manager. Each cloud provider conforms to the same interface, so the API is provider-agnostic.
-- **API layer** (`manager/api_views.py`, `manager/cloud_api_views.py`) — DRF viewsets, validation, per-user audit logging.
-- **Auth/OAuth** (`manager/auth_views.py`, `manager/cloud_views.py`, `manager/oauth_views.py`) — registration/login, OAuth connect flows with CSRF-protected `state`, token-exchange callbacks.
-- **Models** (`manager/models.py`) — `FileOperation` (per-user audit log) and `CloudStorageToken` (encrypted OAuth tokens).
-- **Frontend** (`templates/`) — Tailwind CSS + vanilla JS.
+`manager/services/` holds the backends; `manager/api_views.py` / `cloud_api_views.py`
+are thin DRF layers with per-user audit logging; OAuth connect/callback flows live in
+`cloud_views.py` / `oauth_views.py`. Details: [docs/architecture.md](./docs/architecture.md),
+conventions: [CLAUDE.md](./CLAUDE.md).
 
 ## 🔒 Security
 
-**Implemented:**
-- ✅ Authentication required on all endpoints (session + token)
-- ✅ OAuth tokens **encrypted at rest** (Fernet via `EncryptedTextField`)
-- ✅ OAuth `state` **CSRF nonce** validated on every callback
-- ✅ Rate limiting (anon + authenticated)
-- ✅ Path-traversal validation, file-size limits, input sanitization, password validators
+Implemented: auth on all endpoints, OAuth tokens encrypted at rest (Fernet),
+`state` CSRF nonce on callbacks, rate limiting, path-traversal validation,
+file-size limits, password validators.
 
-**Still required for a production deployment:**
-- ⚠️ HTTPS (TLS termination) and secure cookie settings
-- ⚠️ A reverse proxy in front of the container (the Docker image already runs gunicorn + whitenoise; never expose `runserver`)
-- ⚠️ A strong `DJANGO_SECRET_KEY` and `FILEFLUX_ENCRYPTION_KEY` sourced from a secrets manager (not the dev fallback)
-- ⚠️ `DEBUG=False` and a correct `ALLOWED_HOSTS`
-- ⚠️ Rotate the committed dev secret key before exposing the repo
+Still required for production: HTTPS + secure cookies, a reverse proxy in front of
+the container (the image runs gunicorn + whitenoise), strong `DJANGO_SECRET_KEY` /
+`FILEFLUX_ENCRYPTION_KEY` from a secrets manager, `DEBUG=False` + correct
+`ALLOWED_HOSTS`, and rotating the committed dev secret key.
 
 ## 🛠️ Development
 
 ```bash
-python manage.py test          # 43 tests
-python manage.py makemigrations && python manage.py migrate
-python manage.py createsuperuser
+python manage.py test manager     # 43 tests
 ```
 
-See [CLAUDE.md](./CLAUDE.md) for the full development guide (commands, architecture
-conventions, gotchas).
+Full guide (commands, conventions, gotchas): [CLAUDE.md](./CLAUDE.md).
 
-## 📦 Dependencies
-Django 6.0.2, Django REST Framework 3.16.1, boto3 1.42.59, python-dotenv 1.2.2, requests 2.31.0, requests-toolbelt 1.0.0, cryptography 50.0.0, gunicorn 23.0.0 (Docker), whitenoise 6.12.0 (static files). SQLite for development.
+**Dependencies:** Django 6.0.2 · DRF 3.16.1 · boto3 · python-dotenv · requests ·
+requests-toolbelt · cryptography · gunicorn + whitenoise (Docker). SQLite in development.
 
 ## 🗺️ Roadmap
 
-**All planned features are implemented** — OneDrive integration, security hardening, per-user audit logs, pagination + infinite scroll, browser downloads with progress/cancel, file preview, drag-and-drop upload, cross-source move, presigned share links, bi-directional sync, and S3 versioning.
-
-**Future ideas (not scheduled):**
-- [ ] True S3 continuation-token pagination (for very large buckets)
-- [ ] Background sync scheduler (currently cron + `sync_storage`)
-- [ ] Google Drive sync / sharing parity
-- [ ] Local file versioning
-
-See [VERSION.md](./VERSION.md) and [CHANGELOG.md](./CHANGELOG.md) for history.
+All planned features are done. Future ideas (unscheduled): true S3
+continuation-token pagination, background sync scheduler, Google Drive sync/sharing
+parity, local file versioning. History: [CHANGELOG](./CHANGELOG.md) · [docs/history.md](./docs/history.md).
 
 ## 📄 License
 For educational and development purposes.

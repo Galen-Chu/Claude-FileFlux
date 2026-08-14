@@ -71,8 +71,8 @@ python manage.py enable_s3_versioning
 - API responses are additive — don't change existing response fields'
   meanings; add new fields instead.
 - Migrations: `makemigrations manager` + commit the migration file.
-- Docs live at the repo root (README / VERSION / CHANGELOG / CLAUDE.md);
-  historical and deep-dive documents are under `docs/`.
+- Docs: README / VERSION / CHANGELOG / CLAUDE.md at the root are current;
+  `docs/` holds oauth-setup, architecture, and the condensed design history.
 
 ## Gotchas
 
@@ -80,5 +80,4 @@ python manage.py enable_s3_versioning
 - `FileResponse` keeps file handles open — close responses in tests or
   Windows teardown fails (`PermissionError: WinError 32`).
 - The OAuth `state` parameter is `"<provider>:<nonce>"` and is validated
-  against the session; the demo-token flow described in
-  `docs/TECH_OAUTH_DEMO_VS_REAL.md` is superseded (real OAuth is implemented).
+  against the session (flow diagram in `docs/architecture.md`).
