@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](./VERSION.md)
 [![Django](https://img.shields.io/badge/Django-6.0.2-green.svg)](https://www.djangoproject.com/)
 [![Python](https://img.shields.io/badge/Python-3.14+-brightgreen.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen.svg)](#-development--開發)
+[![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen.svg)](#development)
 
 A Django + DRF application giving one authenticated interface for files across
 **local storage, AWS S3 (or MinIO), Google Drive, and OneDrive** — web UI + REST API,
@@ -12,10 +12,11 @@ per-user audit logging, OAuth tokens encrypted at rest, containerized deployment
 以 Django + DRF 打造的單一登入檔案管理介面，整合**本機儲存、AWS S3（或 MinIO）、Google Drive 與 OneDrive**——提供網頁 UI 與 REST API、逐使用者稽核日誌、OAuth Token 靜態加密，並支援容器化部署。
 
 > **Status | 狀態：** v2.3.0 — all planned roadmap features implemented. Production still
-> needs HTTPS and managed secrets (see [Security](#-security--安全性)).
+> needs HTTPS and managed secrets (see [Security](#security)).
 >
-> v2.3.0 —— ��劃中的 Roadmap 功能已全部完成。正式環境仍需 HTTPS 與受管理的金鑰（見[安全性](#-security--安全性)）。
+> v2.3.0 —— 規劃中的 Roadmap 功能已全部完成。正式環境仍需 HTTPS 與受管理的金鑰（見[安全性](#security)）。
 
+<a id="features"></a>
 ## ✨ Features · 功能特色
 
 - **Four backends, two contracts** 四種後端、兩種契約 — local/S3 (`BaseStorage`) and
@@ -41,6 +42,7 @@ per-user audit logging, OAuth tokens encrypted at rest, containerized deployment
 - 43 automated tests 自動化測試；Docker deployment with optional MinIO backend
   附可選 MinIO 後端的容器化部署
 
+<a id="quick-start"></a>
 ## 🚀 Quick Start · 快速開始
 
 ```bash
@@ -69,6 +71,7 @@ Key env vars (full list in [.env.template](./.env.template)): `DJANGO_SECRET_KEY
 
 重要環境變數（完整清單見 [.env.template](./.env.template)）：`DJANGO_SECRET_KEY`、`DEBUG`、`ALLOWED_HOSTS`、`FILEFLUX_ENCRYPTION_KEY`、`S3_ENDPOINT_URL`、`AWS_*`/`BUCKET_NAME`、`GOOGLE_*`／`MS_*`（OAuth 申請教學見 [docs/oauth-setup.md](./docs/oauth-setup.md)）。
 
+<a id="usage"></a>
 ## 📖 Usage · 使用方式
 
 **Web UI | 網頁介面：** register at `/register/`; manage files at `/manager/` (tabs per
@@ -118,6 +121,7 @@ curl -H "Authorization: Token $T" localhost:8000/api/files/sync-preview/
 | `/api/cloud/files/{id}/` | DELETE | Delete · 刪除 |
 | `/api/cloud/files/{id}/rename/` | PATCH | Rename · 重新命名（`new_name`） |
 
+<a id="architecture"></a>
 ## 🏗️ Architecture · 架構
 
 ```
@@ -136,6 +140,7 @@ connect/callback flows live in `cloud_views.py` / `oauth_views.py`.
 Details: [docs/architecture.md](./docs/architecture.md), conventions: [CLAUDE.md](./CLAUDE.md).
 詳細設計見 [docs/architecture.md](./docs/architecture.md)，開發慣例見 [CLAUDE.md](./CLAUDE.md)。
 
+<a id="security"></a>
 ## 🔒 Security · 安全性
 
 Implemented · 已實作： auth on all endpoints 全端點認證、OAuth tokens encrypted at
@@ -149,6 +154,7 @@ strong `DJANGO_SECRET_KEY` / `FILEFLUX_ENCRYPTION_KEY` from a secrets manager �
 `DEBUG=False` + correct `ALLOWED_HOSTS`、rotating the committed dev secret key
 更換 repo 內建的開發用金鑰。
 
+<a id="development"></a>
 ## 🛠️ Development · 開發
 
 ```bash
@@ -161,6 +167,7 @@ Full guide (commands, conventions, gotchas) · 完整開發指南（指令、慣
 **Dependencies · 依賴：** Django 6.0.2 · DRF 3.16.1 · boto3 · python-dotenv · requests ·
 requests-toolbelt · cryptography · gunicorn + whitenoise (Docker)。SQLite in development 開發環境使用 SQLite。
 
+<a id="roadmap"></a>
 ## 🗺️ Roadmap · 路線圖
 
 All planned features are done · 規劃功能已全部完成。Future ideas (unscheduled) ·
