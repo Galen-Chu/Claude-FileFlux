@@ -37,6 +37,9 @@
                         <button onclick="showMoveModal()" class="bg-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition">
                             Move Selected
                         </button>
+                        <button onclick="showSyncModal()" class="bg-teal-600 px-4 py-2 rounded-lg font-semibold hover:bg-teal-700 transition">
+                            Sync
+                        </button>
                     </div>
                     <div class="border-l border-purple-400 pl-4 flex items-center space-x-3">
                         <span class="text-purple-200">Welcome, {{ user.username }}</span>
@@ -380,6 +383,35 @@
         </div>
     </div>
 
+    <!-- Sync Modal -->
+    <div id="sync-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-[600px] max-w-[95vw] shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Sync Local &harr; S3</h3>
+                <p id="sync-summary" class="text-sm text-gray-600 mb-2">Building sync plan...</p>
+                <p class="text-xs text-gray-400 mb-3">Last-write-wins: for files on both sides, the newer timestamp overwrites the older. Review the plan before running.</p>
+                <div id="sync-action-list" class="max-h-64 overflow-y-auto border border-gray-200 rounded-md p-2 mb-4"></div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="hideSyncModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Close</button>
+                    <button type="button" id="sync-run-btn" onclick="runSync()" disabled class="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 disabled:opacity-50">Run Sync</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Versions Modal -->
+    <div id="versions-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-[600px] max-w-[95vw] shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Version History</h3>
+                <div id="versions-list" class="max-h-80 overflow-y-auto"></div>
+                <div class="flex justify-end mt-4">
+                    <button type="button" onclick="hideVersionsModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Error Toast -->
     <div id="error-toast" class="hidden fixed bottom-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg">
         <span id="error-message"></span>
@@ -680,10 +712,12 @@
                 const previewType = isFile ? getPreviewType(file.name) : null;
                 const canDownload = (file.source === 's3' || file.source === 'googledrive') && isFile;
                 const canShare = file.source === 's3' && isFile;
+                const canHistory = file.source === 's3' && isFile;
                 const actionsHtml = [
                     previewType ? `<button onclick="handlePreview('${fileId}','${file.source}')" class="text-blue-600 hover:text-blue-900 font-medium">Preview</button>` : '',
                     canDownload ? `<button onclick="handleDownload('${fileId}','${file.source}')" class="text-purple-600 hover:text-purple-900 font-medium">Download</button>` : '',
                     canShare ? `<button onclick="handleShare('${fileId}')" class="text-green-600 hover:text-green-900 font-medium">Share</button>` : '',
+                    canHistory ? `<button onclick="showVersions('${fileId}')" class="text-gray-600 hover:text-gray-900 font-medium">History</button>` : '',
                 ].filter(Boolean).join(' ') || '<span class="text-gray-400">-</span>';
 
                 // Make folders clickable for Google Drive
@@ -1010,6 +1044,147 @@
             } catch (e) {
                 showError('Move failed: ' + e.message);
             }
+        }
+
+        // ----- Local <-> S3 sync (A9a) -----
+        async function showSyncModal() {
+            const modal = document.getElementById('sync-modal');
+            const summary = document.getElementById('sync-summary');
+            const list = document.getElementById('sync-action-list');
+            const runBtn = document.getElementById('sync-run-btn');
+            summary.textContent = 'Building sync plan...';
+            list.innerHTML = '';
+            runBtn.disabled = true;
+            runBtn.textContent = 'Run Sync';
+            modal.classList.remove('hidden');
+            try {
+                const resp = await fetch('/api/files/sync-preview/');
+                const data = await resp.json();
+                if (!resp.ok) {
+                    summary.textContent = data.error || 'Failed to build sync plan';
+                    return;
+                }
+                summary.textContent = `${data.to_upload} to upload to S3, ${data.to_download} to download to local, ${data.unchanged} unchanged`;
+                if (data.actions.length === 0) {
+                    list.innerHTML = '<div class="text-sm text-gray-500 py-2">Everything is in sync.</div>';
+                }
+                data.actions.slice(0, 50).forEach(a => {
+                    const row = document.createElement('div');
+                    row.className = 'flex justify-between text-sm py-1 border-b border-gray-100';
+                    const dir = a.direction === 'push'
+                        ? '<span class="text-purple-600 font-medium">local &rarr; S3</span>'
+                        : '<span class="text-blue-600 font-medium">S3 &rarr; local</span>';
+                    row.innerHTML = `<span class="text-gray-700 truncate mr-2">${escapeHtml(a.path)}</span>` +
+                        `<span class="whitespace-nowrap">${dir} <span class="text-gray-400 text-xs">(${a.reason})</span></span>`;
+                    list.appendChild(row);
+                });
+                if (data.actions.length > 50) {
+                    const more = document.createElement('div');
+                    more.className = 'text-xs text-gray-500 py-1';
+                    more.textContent = `... and ${data.actions.length - 50} more`;
+                    list.appendChild(more);
+                }
+                runBtn.disabled = data.actions.length === 0;
+            } catch (e) {
+                summary.textContent = 'Failed to build sync plan: ' + e.message;
+            }
+        }
+
+        async function runSync() {
+            const runBtn = document.getElementById('sync-run-btn');
+            const summary = document.getElementById('sync-summary');
+            runBtn.disabled = true;
+            runBtn.textContent = 'Syncing...';
+            try {
+                const resp = await fetch('/api/files/sync-run/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    document.getElementById('sync-modal').classList.add('hidden');
+                    showSuccess(`Sync complete: ${data.pushed} uploaded, ${data.pulled} downloaded${data.failed.length ? `, ${data.failed.length} failed` : ''}`);
+                    loadFiles(currentSource);
+                } else {
+                    summary.textContent = data.error || 'Sync failed';
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Run Sync';
+                }
+            } catch (e) {
+                summary.textContent = 'Sync failed: ' + e.message;
+                runBtn.disabled = false;
+                runBtn.textContent = 'Run Sync';
+            }
+        }
+
+        function hideSyncModal() {
+            document.getElementById('sync-modal').classList.add('hidden');
+        }
+
+        // ----- S3 version history (A9b) -----
+        async function showVersions(fileId) {
+            const modal = document.getElementById('versions-modal');
+            const list = document.getElementById('versions-list');
+            list.innerHTML = '<div class="text-sm text-gray-500 py-2">Loading versions...</div>';
+            modal.classList.remove('hidden');
+            try {
+                const resp = await fetch(`/api/files/versions/?path=${encodeURIComponent(fileId)}`);
+                const data = await resp.json();
+                if (!resp.ok) {
+                    list.innerHTML = `<div class="text-sm text-red-600 py-2">${escapeHtml(data.error || 'Failed to load versions')}</div>`;
+                    return;
+                }
+                if (!data.versions.length) {
+                    list.innerHTML = '<div class="text-sm text-gray-500 py-2">No versions found. Bucket versioning may not be enabled — run <code>manage.py enable_s3_versioning</code>.</div>';
+                    return;
+                }
+                list.innerHTML = '';
+                data.versions.forEach(v => {
+                    const row = document.createElement('div');
+                    row.className = 'flex justify-between items-center text-sm py-2 border-b border-gray-100';
+                    const label = v.version_id === 'null' ? 'null version' : escapeHtml(String(v.version_id).substring(0, 14)) + '&hellip;';
+                    row.innerHTML = `
+                        <div>
+                            <div class="text-gray-700">${v.is_latest ? '<span class="bg-green-100 text-green-800 text-xs px-1.5 py-0.5 rounded mr-1">LATEST</span>' : ''}${label}</div>
+                            <div class="text-xs text-gray-400">${v.last_modified ? formatDate(v.last_modified) : ''} &middot; ${formatFileSize(v.size)}</div>
+                        </div>
+                        <div class="space-x-2 whitespace-nowrap">
+                            <button onclick="downloadVersion('${fileId}','${v.version_id}')" class="text-purple-600 hover:text-purple-900 font-medium">Download</button>
+                            ${!v.is_latest ? `<button onclick="restoreVersion('${fileId}','${v.version_id}')" class="text-blue-600 hover:text-blue-900 font-medium">Restore</button>` : ''}
+                        </div>`;
+                    list.appendChild(row);
+                });
+            } catch (e) {
+                list.innerHTML = `<div class="text-sm text-red-600 py-2">Failed to load versions: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        function downloadVersion(fileId, versionId) {
+            window.open(`/api/files/download-file/?source=s3&path=${encodeURIComponent(fileId)}&version_id=${encodeURIComponent(versionId)}`, '_blank');
+        }
+
+        async function restoreVersion(fileId, versionId) {
+            try {
+                const resp = await fetch('/api/files/versions/restore/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: fileId, version_id: versionId })
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showSuccess('Version restored as latest');
+                    showVersions(fileId); // refresh the list
+                } else {
+                    showError(data.error || 'Restore failed');
+                }
+            } catch (e) {
+                showError('Restore failed: ' + e.message);
+            }
+        }
+
+        function hideVersionsModal() {
+            document.getElementById('versions-modal').classList.add('hidden');
         }
 
         // Show upload modal
