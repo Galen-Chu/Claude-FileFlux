@@ -1,13 +1,13 @@
 # FileFlux — Unified Cloud File Manager
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](./VERSION.md)
+[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](./VERSION.md)
 [![Django](https://img.shields.io/badge/Django-6.0.2-green.svg)](https://www.djangoproject.com/)
 [![Python](https://img.shields.io/badge/Python-3.14+-brightgreen.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen.svg)](#-development)
 
 A Django + Django REST Framework application that gives you one authenticated interface for managing files across **local storage, AWS S3, Google Drive, and OneDrive**, with a responsive web UI, a REST API, per-user audit logging, and OAuth tokens encrypted at rest.
 
-> **Status:** v2.2.0 — all planned roadmap features are implemented (file operations, pagination, transfers, preview, sharing, drag-and-drop, move, bi-directional sync, versioning) plus authentication and security hardening. A production deployment still needs HTTPS, a real WSGI server, and managed secrets (see [Security](#-security)).
+> **Status:** v2.3.0 — all planned roadmap features are implemented (file operations, pagination, transfers, preview, sharing, drag-and-drop, move, bi-directional sync, versioning) plus authentication, security hardening, and containerized deployment (Docker + optional MinIO). A production deployment still needs HTTPS and managed secrets (see [Security](#-security)).
 
 ## ✨ Key Features
 
@@ -69,6 +69,17 @@ python manage.py runserver
 ```
 
 Open http://127.0.0.1:8000/ (file manager at `/manager/`, API browser at `/api/files/`).
+
+### Run with Docker (optional)
+```bash
+cp .env.template .env    # set a strong DJANGO_SECRET_KEY
+docker compose up --build
+# open http://localhost:8000/ and register a user
+```
+The compose file runs gunicorn + whitenoise (migrations apply automatically) with the
+SQLite DB and local storage on named volumes. To use a local S3-compatible backend,
+uncomment the `minio` service in `docker-compose.yml` and point `.env` at it
+(`S3_ENDPOINT_URL=http://minio:9000`) — see the comments in the compose file.
 
 ### Environment variables (`.env`)
 ```env
@@ -201,7 +212,7 @@ BaseStorage (abstract)            CloudStorageService (abstract)
 
 **Still required for a production deployment:**
 - ⚠️ HTTPS (TLS termination) and secure cookie settings
-- ⚠️ A production WSGI server (gunicorn/uwsgi) behind a reverse proxy — not Django's `runserver`
+- ⚠️ A reverse proxy in front of the container (the Docker image already runs gunicorn + whitenoise; never expose `runserver`)
 - ⚠️ A strong `DJANGO_SECRET_KEY` and `FILEFLUX_ENCRYPTION_KEY` sourced from a secrets manager (not the dev fallback)
 - ⚠️ `DEBUG=False` and a correct `ALLOWED_HOSTS`
 - ⚠️ Rotate the committed dev secret key before exposing the repo
@@ -209,13 +220,16 @@ BaseStorage (abstract)            CloudStorageService (abstract)
 ## 🛠️ Development
 
 ```bash
-python manage.py test          # 22 tests
+python manage.py test          # 43 tests
 python manage.py makemigrations && python manage.py migrate
 python manage.py createsuperuser
 ```
 
+See [CLAUDE.md](./CLAUDE.md) for the full development guide (commands, architecture
+conventions, gotchas).
+
 ## 📦 Dependencies
-Django 6.0.2, Django REST Framework 3.16.1, boto3 1.42.59, python-dotenv 1.2.2, requests 2.31.0, requests-toolbelt 1.0.0, cryptography 50.0.0. SQLite for development.
+Django 6.0.2, Django REST Framework 3.16.1, boto3 1.42.59, python-dotenv 1.2.2, requests 2.31.0, requests-toolbelt 1.0.0, cryptography 50.0.0, gunicorn 23.0.0 (Docker), whitenoise 6.12.0 (static files). SQLite for development.
 
 ## 🗺️ Roadmap
 
@@ -233,4 +247,4 @@ See [VERSION.md](./VERSION.md) and [CHANGELOG.md](./CHANGELOG.md) for history.
 For educational and development purposes.
 
 ---
-**Version:** 2.2.0 · **Updated:** 2026-08-14
+**Version:** 2.3.0 · **Updated:** 2026-08-14

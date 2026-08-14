@@ -1,13 +1,25 @@
 # FileFlux Version Information
 
-## Current Version: 2.2.0
+## Current Version: 2.3.0
 
 **Release Date:** 2026-08-14
-**Status:** All planned roadmap features implemented; production hardening in place (see README → Security)
+**Status:** All planned roadmap features implemented; containerized deployment available (see README → Security / Docker)
 
 ---
 
 ## Version History
+
+### Version 2.3.0 (2026-08-14)
+
+**New Features:**
+- **CLAUDE.md** — repo-level development guide (commands, architecture conventions, gotchas) for Claude Code sessions and collaborators
+- **Containerized deployment** — `Dockerfile` (gunicorn + whitenoise, entrypoint auto-migrates) and `docker-compose.yml` (SQLite + storage on named volumes; optional MinIO service for a local S3-compatible backend)
+- **S3-compatible endpoint support** — `S3_ENDPOINT_URL` env var points boto3 at MinIO / DigitalOcean Spaces / etc.
+- Configurable SQLite path (`DB_PATH`) for volume-mounted deployments
+
+**Docs:** historical/deep-dive markdown moved to `docs/` with an index.
+
+---
 
 ### Version 2.2.0 (2026-08-14)
 

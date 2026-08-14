@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.0] - 2026-08-14
+
+### Added
+- **CLAUDE.md**: repo-level development guide — commands, architecture, conventions, gotchas — for Claude Code sessions and collaborators.
+- **Docker deployment**: `Dockerfile` (python:3.14-slim, gunicorn, whitenoise, entrypoint runs migrations) + `docker-compose.yml` (named volumes for SQLite via the new `DB_PATH` setting and for local storage; optional commented-out MinIO service) + `.dockerignore`.
+- **S3-compatible endpoints**: `S3_ENDPOINT_URL` env var (and `S3Storage(endpoint_url=...)`) lets boto3 target MinIO/Spaces instead of real AWS S3.
+- whitenoise middleware + `STATIC_ROOT` so the container serves static files; gunicorn + whitenoise added to requirements.
+
+### Changed
+- Documentation reorganized: root keeps README/VERSION/CHANGELOG/CLAUDE.md; historical and deep-dive docs moved under `docs/` with an index.
+
+---
+
 ## [2.2.0] - 2026-08-14
 
 ### Added
